@@ -12,6 +12,7 @@
 #include <cstdio>
 
 using namespace std;
+
 namespace DataUtils {
   int read_sentences(vector<vector<string > > &X,
                               vector<vector<string> > &T, 
@@ -59,6 +60,5 @@ namespace DataUtils {
     return num_labels;
   }
 }
-
 
 #endif

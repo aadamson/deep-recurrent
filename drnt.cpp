@@ -401,7 +401,6 @@ RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT) {
 }
 
 void RNN::update() {
-
   double lambda = LAMBDA;
   double mr = MR;
   double norm = 0;
