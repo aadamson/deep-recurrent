@@ -12,4 +12,4 @@ tar -xzvf eigen.tar.gz --strip-components=1 eigen-eigen-10219c95fe65/Eigen
 
 # compile & run
 g++ drnt.cpp -I ./Eigen/ -std=c++11 -O3 -o drnt
-./drnt 0 agent.txt
+./drnt 0

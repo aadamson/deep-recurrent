@@ -19,15 +19,10 @@
 #define uint unsigned int
 
 #define DROPOUT
-#define ETA 0.005
+#define ETA 0.001
 #define NORMALIZE false // keeping this false throughout my own experiments
-<<<<<<< HEAD
 #define OCLASS_WEIGHT 0.5
 #define layers 3 // number of EXTRA (not all) hidden layers
-=======
-#define OCLASS_WEIGHT 0.6 // 0.6 might be good with dropout
-#define layers 2 // number of EXTRA (not all) hidden layers
->>>>>>> parent of ecfe093... More refactoring.
 
 #define MR 0.7
 uint fold = -1;
@@ -35,28 +30,15 @@ uint fold = -1;
 using namespace Eigen;
 using namespace std;
 
-<<<<<<< HEAD
 double LAMBDA = (layers > 2) ? 1e-3 : 1e-4;  // L2 regularizer on weights
 double LAMBDAH = (layers > 2) ? 1e-5 : 1e-4; //L2 regularizer on activations
-=======
-double LAMBDA = 0;  // L2 regularizer on weights
-double LAMBDAH = (layers > 2) ? 1e-5 : 0; //L2 regularizer on activations
->>>>>>> parent of ecfe093... More refactoring.
 double DROP;
-
-VectorXd f(const VectorXd &x);
-VectorXd fp(const VectorXd &x);
-MatrixXd g(const MatrixXd &x);
-MatrixXd gp(const MatrixXd &x);
 
 #ifdef DROPOUT
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p=DROP);
 #endif
 
-
-
 class RNN {
-<<<<<<< HEAD
 public:
   RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT);
   Matrix<double, 6, 2> train(vector<vector<string> > &sents,
@@ -118,62 +100,6 @@ private:
   uint epoch;
 
   double lr;
-=======
-  public:
-    RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT);
-    Matrix<double, 6, 2> train(vector<vector<string> > &sents, 
-                                vector<vector<string> > &labels,
-                                vector<vector<string> > &validX, 
-                                vector<vector<string> > &validL,
-                                vector<vector<string> > &testX, 
-                                vector<vector<string> > &testL);
-    void update();
-    Matrix<double, 3, 2> testSequential(vector<vector<string> > &sents, 
-                                    vector<vector<string> > &labels);
-    LookupTable *LT;
-    void save(string fname);
-    void load(string fname);
-   
-  private:
-    void forward(const vector<string> &, int index=-1);
-    void backward(const vector<string> &);
-
-    MatrixXd x,y,hf,hb, hhf[layers],hhb[layers];
-    vector<string> s;
-    
-    // recurrent network params
-    MatrixXd Wo, Wfo, Wbo, WWfo[layers], WWbo[layers];
-    VectorXd bo;
-    MatrixXd Wf, Vf, Wb, Vb;
-    VectorXd bhf, bhb;
-
-    MatrixXd WWff[layers], WWfb[layers], WWbb[layers], WWbf[layers];
-    MatrixXd VVf[layers], VVb[layers];
-    VectorXd bbhf[layers], bbhb[layers];
-
-    MatrixXd gWo, gWfo, gWbo, gWWfo[layers], gWWbo[layers];
-    VectorXd gbo;
-    MatrixXd gWf, gVf, gWb, gVb;
-    VectorXd gbhf, gbhb;
-    
-    MatrixXd gWWff[layers], gWWfb[layers], gWWbb[layers], gWWbf[layers];
-    MatrixXd gVVf[layers], gVVb[layers];
-    VectorXd gbbhf[layers], gbbhb[layers];
-    
-    MatrixXd vWo, vWfo, vWbo, vWWfo[layers], vWWbo[layers];
-    VectorXd vbo;
-    MatrixXd vWf, vVf, vWb, vVb;
-    VectorXd vbhf, vbhb;
-
-    MatrixXd vWWff[layers], vWWfb[layers], vWWbb[layers], vWWbf[layers];
-    MatrixXd vVVf[layers], vVVb[layers];
-    VectorXd vbbhf[layers], vbbhb[layers];
-    
-    uint nx, nhf, nhb, ny;
-    uint epoch;
-
-    double lr;
->>>>>>> parent of ecfe093... More refactoring.
 };
 
 void RNN::forward(const vector<string> & s, int index) {
@@ -255,13 +181,8 @@ void RNN::forward(const vector<string> & s, int index) {
   // output layer uses the last hidden layer
   // you can experiment with the other version by changing this
   // (backward pass needs to change as well of course)
-<<<<<<< HEAD
   y = softmax(bo*RowVectorXd::Ones(T) + WWfo[layers-1]*hhf[layers-1] +
               WWbo[layers-1]*hhb[layers-1]);
-=======
-  y = g(bo*RowVectorXd::Ones(T) + WWfo[layers-1]*hhf[layers-1] + 
-                      WWbo[layers-1]*hhb[layers-1]);
->>>>>>> parent of ecfe093... More refactoring.
 }
 
 void RNN::backward(const vector<string> &labels) {
@@ -283,21 +204,13 @@ void RNN::backward(const vector<string> &labels) {
     yi(label_idx, i) = 1;
   }
 
-<<<<<<< HEAD
   //cout << "y: " << y << endl;
   //cout << "yi: " << yi << endl;
   MatrixXd gpyd = smaxentp(y,yi);
   for (uint i=0; i<T; i++)
     if (labels[i] == "0")
       gpyd.col(i) *= OCLASS_WEIGHT;
-=======
-  MatrixXd delta = y-yi;
-  for (uint i=0; i<T; i++)
-    if (labels[i] == "O")
-      delta.col(i) *= OCLASS_WEIGHT;
->>>>>>> parent of ecfe093... More refactoring.
 
-  MatrixXd gpyd = gp(y).cwiseProduct(delta);
   for (uint l=layers-1; l<layers; l++) {
     gWWfo[l].noalias() += gpyd * hhf[l].transpose();
     gWWbo[l].noalias() += gpyd * hhb[l].transpose();
@@ -391,6 +304,9 @@ RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT) {
   this->nhf = nhf;
   this->nhb = nhb;
   this->ny = ny;
+
+  f = &relu;
+  fp = &relup;
 
   // init randomly
   Wf = MatrixXd(nhf,nx).unaryExpr(ptr_fun(urand));
@@ -715,7 +631,6 @@ RNN::train(vector<vector<string> > &sents,
              << Vf.norm() << " " << Vb.norm() << " "
              << Wfo.norm() << " " << Wbo.norm() << endl;
         for (uint l=0; l<layers; l++) {
-<<<<<<< HEAD
           cout << WWff[l].norm() << " " << WWfb[l].norm() << " "
                << WWbb[l].norm() << " " << WWbf[l].norm() << " "
                << VVf[l].norm() << " " << VVb[l].norm() << " "
@@ -726,15 +641,6 @@ RNN::train(vector<vector<string> > &sents,
       printResults(testSequential(sents, labels));
 
       //cout << "P, R, F1:\n" << testSequential(sents, labels) << endl;
-=======
-        cout << WWff[l].norm() << " " << WWfb[l].norm() << " "
-             << WWbb[l].norm() << " " << WWbf[l].norm() << " "
-             << VVf[l].norm() << " " << VVb[l].norm() << " "
-             << WWfo[l].norm() << " " << WWbo[l].norm() << endl;
-        }*/
-
-      cout << "P, R, F1:\n" << testSequential(sents, labels) << endl;
->>>>>>> parent of ecfe093... More refactoring.
       resVal = testSequential(validX, validL);
       resTest = testSequential(testX, testL);
 
@@ -893,30 +799,6 @@ Matrix<double, 3, 2> RNN::testSequential(vector<vector<string> > &sents,
       recallProp, recallBin,
       f1Prop, f1Bin;
   return results;
-}
-
-RowVectorXd logsumexp(const MatrixXd &x) {
-  RowVectorXd m = x.colwise().maxCoeff();
-  return log((x - VectorXd::Ones(x.rows())*m).array().exp().colwise().sum()) 
-    + m.array();
-}
-
-MatrixXd g(const MatrixXd &x) { // softmax
-  MatrixXd y = x;
-  y = (x - VectorXd::Ones(x.rows())*logsumexp(x)).array().exp();
-  return y;
-}
-
-MatrixXd gp(const MatrixXd &x) {
-  return x.array() * (1-x.array());
-}
-
-VectorXd f(const VectorXd &x) {
-  return x.array().max(0);
-}
-
-VectorXd fp(const VectorXd &x) { 
-  return (x.array() > 0).cast<double>();
 }
 
 #ifdef DROPOUT
