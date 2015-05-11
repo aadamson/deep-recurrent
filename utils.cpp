@@ -31,24 +31,6 @@ istream& operator>>(istream& s, VectorXd& m) {
 }
 }
 
-MatrixXd softmax(const MatrixXd &x) {
-  RowVectorXd m = x.colwise().maxCoeff();
-  MatrixXd t = (x.rowwise() - m).array().exp();
-  return t.array().rowwise() / t.colwise().sum().array();
-}
-
-MatrixXd smaxentp(const MatrixXd &y, const MatrixXd &r) {
-  return y-r;
-}
-
-MatrixXd relu(const MatrixXd &x) {
-  return x.array().max(0);
-}
-
-MatrixXd relup(const MatrixXd &x) { 
-  return (x.array() > 0).cast<double>();
-}
-
 double str2double(const string& s) {
   istringstream i(s);
   double x;
