@@ -16,7 +16,7 @@
 #include "Eigen/Dense"
 #include "utils.cpp"
 #include "data_utils/utils.cpp"
-#include "model.h"
+#include "model.cpp"
 
 #define DROPOUT
 #define ETA 0.001
@@ -591,7 +591,6 @@ string RNN::model_name() {
   string fname = strS.str();
   return fname;
 }
-
 
 int main(int argc, char **argv) {
   fold = atoi(argv[1]); // between 0-9

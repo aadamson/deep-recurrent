@@ -1,7 +1,40 @@
-#include "model.h"
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include "utils.cpp"
+#include "Eigen/Dense"
+
+#define uint unsigned int
 
 using namespace std;
 using namespace Eigen;
+
+class Model {
+public:
+  virtual void save(string fname) = 0;
+  virtual void load(string fname) = 0;
+  
+  virtual MatrixXd forward(const vector<string> &sent) = 0;
+  virtual double backward(const vector<string> &sent, 
+                          const vector<string> &labels) = 0;
+  virtual void update() = 0;
+
+  virtual string model_name() = 0;
+
+  Matrix<double, 6, 2> train(vector<vector<string> > &sents,
+                             vector<vector<string> > &labels,
+                             vector<vector<string> > &validX,
+                             vector<vector<string> > &validL,
+                             vector<vector<string> > &testX,
+                             vector<vector<string> > &testL,
+                             uint max_epoch,
+                             uint mini_batch);
+  Matrix<double, 3, 2> testSequential(vector<vector<string> > &sents,
+                                      vector<vector<string> > &labels);
+};
 
 void printResults(Matrix<double, 3, 2> results) {
   cout << "   " << " Prop " << "  Bin  " << endl;

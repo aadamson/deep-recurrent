@@ -1,3 +1,5 @@
+#ifndef UTILS_CPP
+#define UTILS_CPP
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -230,4 +232,4 @@ vector<string> split(const string &s, char delim) {
   }
   return elems;
 }
-
+#endif
