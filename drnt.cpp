@@ -16,8 +16,7 @@
 #include "Eigen/Dense"
 #include "utils.cpp"
 #include "data_utils/utils.cpp"
-
-#define uint unsigned int
+#include "model.h"
 
 #define DROPOUT
 #define ETA 0.001
@@ -39,31 +38,27 @@ double DROP;
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p=DROP);
 #endif
 
-class RNN {
+class RNN : public Model {
 public:
   RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT);
-  Matrix<double, 6, 2> train(vector<vector<string> > &sents,
-                             vector<vector<string> > &labels,
-                             vector<vector<string> > &validX,
-                             vector<vector<string> > &validL,
-                             vector<vector<string> > &testX,
-                             vector<vector<string> > &testL);
-  void update();
-  Matrix<double, 3, 2> testSequential(vector<vector<string> > &sents,
-                                      vector<vector<string> > &labels);
-  LookupTable *LT;
+
   void save(string fname);
   void load(string fname);
 
-private:
-  void forward(const vector<string> &, int index=-1);
-  void backward(const vector<string> &);
+  MatrixXd forward(const vector<string> &sent);
+  double backward(const vector<string> &sent, 
+                  const vector<string> &labels);
+  void update();
 
+  string model_name();
+
+  LookupTable *LT;
+
+private:
   MatrixXd (*f)(const MatrixXd& x);
   MatrixXd (*fp)(const MatrixXd& x);
 
-  MatrixXd x,y,hf,hb, hhf[layers],hhb[layers];
-  vector<string> s;
+  MatrixXd hf, hb, hhf[layers], hhb[layers];
 
   // recurrent network params
   // WW(f/b)o is forward/backward matrix if output layer
@@ -103,13 +98,13 @@ private:
   double lr;
 };
 
-void RNN::forward(const vector<string> & s, int index) {
+MatrixXd RNN::forward(const vector<string> &sent) {
   VectorXd dropper;
-  uint T = s.size();
-  this->s = s;
-  x = MatrixXd(nx, T);
+  uint T = sent.size();
+  MatrixXd x = MatrixXd(nx, T);
+
   for (uint i=0; i<T; i++)
-    x.col(i) = (*LT)[s[i]];
+    x.col(i) = (*LT)[sent[i]];
 
   hf = MatrixXd::Zero(nhf, T);
   hb = MatrixXd::Zero(nhb, T);
@@ -124,10 +119,7 @@ void RNN::forward(const vector<string> & s, int index) {
   for (uint i=0; i<T; i++) {
     hf.col(i) = (i==0) ? f(Wfx.col(i)) : f(Wfx.col(i) + Vf*hf.col(i-1));
 #ifdef DROPOUT
-    if (index == -1)
-      hf.col(i) *= (1-DROP);
-    else
-      hf.col(i) = hf.col(i).cwiseProduct(dropper);
+    hf.col(i) = hf.col(i).cwiseProduct(dropper);
 #endif
   }
 
@@ -136,10 +128,7 @@ void RNN::forward(const vector<string> & s, int index) {
   for (uint i=T-1; i!=(uint)(-1); i--) {
     hb.col(i) = (i==T-1) ? f(Wbx.col(i)) : f(Wbx.col(i) + Vb*hb.col(i+1));
 #ifdef DROPOUT
-    if (index == -1)
-      hb.col(i) *= (1-DROP);
-    else
-      hb.col(i) = hb.col(i).cwiseProduct(dropper);
+    hb.col(i) = hb.col(i).cwiseProduct(dropper);
 #endif
   }
 
@@ -156,10 +145,7 @@ void RNN::forward(const vector<string> & s, int index) {
                              : f(WWffxf.col(i) + WWfbxb.col(i) +
                                  VVf[l]*hhf[l].col(i-1));
 #ifdef DROPOUT
-      if (index == -1)
-        hhf[l].col(i) *= (1-DROP);
-      else
-        hhf[l].col(i) = hhf[l].col(i).cwiseProduct(dropper);
+      hhf[l].col(i) = hhf[l].col(i).cwiseProduct(dropper);
 #endif
     }
 
@@ -171,10 +157,7 @@ void RNN::forward(const vector<string> & s, int index) {
                                : f(WWbbxb.col(i) + WWbfxf.col(i) +
                                    VVb[l]*hhb[l].col(i+1));
 #ifdef DROPOUT
-      if (index == -1)
-        hhb[l].col(i) *= (1-DROP);
-      else
-        hhb[l].col(i) = hhb[l].col(i).cwiseProduct(dropper);
+      hhb[l].col(i) = hhb[l].col(i).cwiseProduct(dropper);
 #endif
     }
   }
@@ -182,12 +165,17 @@ void RNN::forward(const vector<string> & s, int index) {
   // output layer uses the last hidden layer
   // you can experiment with the other version by changing this
   // (backward pass needs to change as well of course)
-  y = softmax(bo*RowVectorXd::Ones(T) + WWfo[layers-1]*hhf[layers-1] +
+  return softmax(bo*RowVectorXd::Ones(T) + WWfo[layers-1]*hhf[layers-1] +
               WWbo[layers-1]*hhb[layers-1]);
 }
 
-void RNN::backward(const vector<string> &labels) {
-  uint T = x.cols();
+double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
+  double cost = 0.0;
+  uint T = sent.size();
+  MatrixXd x = MatrixXd(nx, T);
+
+  for (uint i=0; i<T; i++)
+    x.col(i) = (*LT)[sent[i]];
 
   MatrixXd dhb = MatrixXd::Zero(nhb, T);
   MatrixXd dhf = MatrixXd::Zero(nhf, T);
@@ -205,8 +193,8 @@ void RNN::backward(const vector<string> &labels) {
     yi(label_idx, i) = 1;
   }
 
-  //cout << "y: " << y << endl;
-  //cout << "yi: " << yi << endl;
+  MatrixXd y = forward(sent);
+
   MatrixXd gpyd = smaxentp(y,yi);
   for (uint i=0; i<T; i++)
     if (labels[i] == "0")
@@ -293,6 +281,8 @@ void RNN::backward(const vector<string> &labels) {
   fphdh = fp(hb.col(T-1)).cwiseProduct(dhb.col(T-1));
   gWb.noalias() += fphdh * x.col(T-1).transpose();
   gbhb.noalias() += fphdh;
+
+  return cost;
 }
 
 
@@ -582,225 +572,6 @@ void RNN::save(string fname) {
   out << bo << endl;
 }
 
-void printResults(Matrix<double, 3, 2> results) {
-  cout << "   " << " Prop " << "  Bin  " << endl;
-  cout << "Pr " << results(0, 0) << " " << results(0, 1) << endl;
-  cout << "Re " << results(1, 0) << " " << results(1, 1) << endl;
-  cout << "F1 " << results(2, 0) << " " << results(2, 1) << endl;
-}
-
-Matrix<double, 6, 2>
-RNN::train(vector<vector<string> > &sents,
-           vector<vector<string> > &labels,
-           vector<vector<string> > &validX,
-           vector<vector<string> > &validL,
-           vector<vector<string> > &testX,
-           vector<vector<string> > &testL) {
-  uint MAXEPOCH = 200;
-  uint MINIBATCH = 80;
-
-  ostringstream strS;
-  strS << "models/drnt_" << layers << "_" << nhf << "_"
-  << nhf << "_" << DROP << "_"
-  << MAXEPOCH << "_" << lr << "_" << LAMBDA << "_"
-  << MR << "_" << fold;
-  string fname = strS.str();
-
-  vector<uint> perm;
-  for (uint i=0; i<sents.size(); i++)
-    perm.push_back(i);
-
-  Matrix<double, 3, 2> bestVal, bestTest;
-  bestVal << 0,0,0,0,0,0;
-
-  for (epoch=0; epoch<MAXEPOCH; epoch++) {
-    shuffle(perm);
-    for (int i=0; i<sents.size(); i++) {
-      forward(sents[perm[i]], perm[i]);
-      backward(labels[perm[i]]);
-      if ((i+1) % MINIBATCH == 0 || i == sents.size()-1)
-        update();
-    }
-    if (epoch % 5 == 0) {
-      Matrix<double, 3, 2> resVal, resTest, resVal2, resTest2;
-      cout << "Epoch " << epoch << endl;
-
-      // diagnostic
-      /*
-        cout << Wf.norm() << " " << Wb.norm() << " "
-             << Vf.norm() << " " << Vb.norm() << " "
-             << Wfo.norm() << " " << Wbo.norm() << endl;
-        for (uint l=0; l<layers; l++) {
-          cout << WWff[l].norm() << " " << WWfb[l].norm() << " "
-               << WWbb[l].norm() << " " << WWbf[l].norm() << " "
-               << VVf[l].norm() << " " << VVb[l].norm() << " "
-               << WWfo[l].norm() << " " << WWbo[l].norm() << endl;
-        }
-      */
-      cout << "Training results" << endl;
-      printResults(testSequential(sents, labels));
-
-      //cout << "P, R, F1:\n" << testSequential(sents, labels) << endl;
-      resVal = testSequential(validX, validL);
-      resTest = testSequential(testX, testL);
-
-      cout << "Validation results" << endl;
-      printResults(resVal);
-
-      cout << "Test results" << endl;
-      printResults(resTest);
-      // cout << "  " << " Prop " << "  Bin  "
-      // cout << "P " << reVal()
-      // cout << "P, R, F1:\n" << resVal << endl;
-      // cout << "P, R, F1" << endl;
-      // cout << resTest  << endl<< endl;
-      if (bestVal(2,0) < resVal(2,0)) {
-        bestVal = resVal;
-        bestTest = resTest;
-        save(fname);
-      }
-    }
-  }
-  Matrix<double, 6, 2> results;
-  results << bestVal, bestTest;
-  return results;
-}
-
-// returns soft (precision, recall, F1) per expression
-// counts proportional overlap & binary overlap
-Matrix<double, 3, 2> RNN::testSequential(vector<vector<string> > &sents,
-                                         vector<vector<string> > &labels) {
-  uint nExprPredicted = 0;
-  double nExprPredictedCorrectly = 0;
-  uint nExprTrue = 0;
-  double precNumerProp = 0, precNumerBin = 0;
-  double recallNumerProp = 0, recallNumerBin = 0;
-  for (uint i=0; i<sents.size(); i++) { // per sentence
-    vector<string> labelsPredicted;
-    forward(sents[i]);
-
-    for (uint j=0; j<sents[i].size(); j++) {
-      uint maxi = argmax(y.col(j));
-      labelsPredicted.push_back(to_string(maxi));
-    }
-    assert(labelsPredicted.size() == y.cols());
-
-    string y, t, py="", pt="";
-    uint match = 0;
-    uint exprSize = 0;
-    vector<pair<uint,uint> > pred, tru;
-    int l1=-1, l2=-1;
-
-    if (labels[i].size() != labelsPredicted.size())
-      cout << labels[i].size() << " " << labelsPredicted.size() << endl;
-    for (uint j=0; j<labels[i].size(); j++) { // per token in a sentence
-      t = labels[i][j];
-      y = labelsPredicted[j];
-
-      if (t != "0") {
-        //nExprTrue++;
-        if (t != pt) {
-          if (l1 != -1) {
-            tru.push_back(make_pair(l1, j));
-          }
-          l1 = j;
-        }
-      } else {
-        if (l1 != -1)
-          tru.push_back(make_pair(l1, j));
-        l1 = -1;
-      }
-
-      if (y != "0") {
-        if (y != py) {
-          if (l2 != -1) {
-            nExprPredicted++;
-            pred.push_back(make_pair(l2, j));
-          }
-          l2 = j;
-        }
-      } else {
-        if (l2 != -1) {
-          nExprPredicted++;
-          pred.push_back(make_pair(l2, j));
-        }
-        l2 = -1;
-      }
-
-//      if ((y == "B") || ((y == "I") && ((py == "") || (py == "O")))) {
-//        nExprPredicted++;
-//        if (l2 != -1)
-//          pred.push_back(make_pair(l2,j));
-//        l2 = j;
-//      } else if (y == "I") {
-//        assert(l2 != -1);
-//      } else if (y == "O") {
-//        if (l2 != -1)
-//          pred.push_back(make_pair(l2,j));
-//        l2 = -1;
-//      } else {
-//        cout << y << endl;
-//        assert(false);
-//      }
-
-      py = y;
-      pt = t;
-    }
-    if ((l1 != -1) && (l1 != labels[i].size()))
-      tru.push_back(make_pair(l1,labels[i].size()));
-    if ((l2 != -1) && (l2 != labels[i].size()))
-      pred.push_back(make_pair(l2,labels[i].size()));
-
-    vector<bool> trum = vector<bool>(tru.size(),false);
-    vector<bool> predm = vector<bool>(pred.size(),false);
-    for (uint a=0; a<tru.size(); a++) {
-      pair<uint,uint> truSpan = tru[a];
-      nExprTrue++;
-      for (uint b=0; b<pred.size(); b++) {
-        pair<uint,uint> predSpan = pred[b];
-
-        uint lmax, rmin;
-        if (truSpan.first > predSpan.first)
-          lmax = truSpan.first;
-        else
-          lmax = predSpan.first;
-        if (truSpan.second < predSpan.second)
-          rmin = truSpan.second;
-        else
-          rmin = predSpan.second;
-
-        uint overlap = 0;
-        if (rmin > lmax)
-          overlap = rmin-lmax;
-        if (predSpan.second == predSpan.first) cout << predSpan.first << endl;
-        assert(predSpan.second != predSpan.first);
-        precNumerProp += (double)overlap/(predSpan.second-predSpan.first);
-        recallNumerProp += (double)overlap/(truSpan.second-truSpan.first);
-        if (!predm[b] && overlap > 0) {
-          precNumerBin += (double)(overlap>0);
-          predm[b] = true;
-        }
-        if (!trum[a] && overlap>0) {
-          recallNumerBin += 1;
-          trum[a]=true;
-        }
-      }
-    }
-
-  }
-  double precisionProp = (nExprPredicted==0) ? 1 : precNumerProp/nExprPredicted;
-  double recallProp = recallNumerProp/nExprTrue;
-  double f1Prop = (2*precisionProp*recallProp)/(precisionProp+recallProp);
-  double precisionBin = (nExprPredicted==0) ? 1 : precNumerBin/nExprPredicted;
-  double recallBin = recallNumerBin/nExprTrue;
-  double f1Bin = (2*precisionBin*recallBin)/(precisionBin+recallBin);
-  Matrix<double, 3, 2> results;
-  results << precisionProp, precisionBin,
-      recallProp, recallBin,
-      f1Prop, f1Bin;
-  return results;
-}
-
 #ifdef DROPOUT
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
   for (uint i=0; i<x.size(); i++) {
@@ -810,6 +581,17 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
   return x;
 }
 #endif
+
+string RNN::model_name() {
+  ostringstream strS;
+  strS << "models/drnt_" << layers << "_" << nhf << "_"
+  << nhb << "_" << DROP << "_"
+  << lr << "_" << LAMBDA << "_"
+  << MR << "_" << fold;
+  string fname = strS.str();
+  return fname;
+}
+
 
 int main(int argc, char **argv) {
   fold = atoi(argv[1]); // between 0-9
@@ -882,7 +664,7 @@ int main(int argc, char **argv) {
   double bestDrop;
   for (DROP=0; DROP<0.1; DROP+=0.2) { // can use this loop for CV
     RNN brnn(25,25,25,ny,LT);
-    auto results = brnn.train(trainX, trainL, validX, validL, testX, testL);
+    auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
     if (best(2,0) < results(2,0)) { // propF1 on val set
       best = results;
       bestDrop = DROP;

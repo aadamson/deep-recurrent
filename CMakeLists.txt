@@ -4,6 +4,8 @@ include_directories(data_utils)
 
 project(DeepRecurrent)
 
+install(FILES model.cpp DESTINATION include/)
+
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
 add_executable(DeepRecurrent drnt.cpp)
