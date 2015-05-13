@@ -49,6 +49,10 @@ void printResults(Matrix<double, 3, 2> results) {
 // counts proportional overlap & binary overlap
 Matrix<double, 3, 2> Model::testSequential(vector<vector<string> > &sents,
                                            vector<vector<string> > &labels) {
+  vector<string> y_hat;
+  vector<string> y_truth;
+  uint ny = 0;
+
   uint nExprPredicted = 0;
   double nExprPredictedCorrectly = 0;
   uint nExprTrue = 0;
@@ -60,6 +64,7 @@ Matrix<double, 3, 2> Model::testSequential(vector<vector<string> > &sents,
 
     for (uint j=0; j<sents[i].size(); j++) {
       uint maxi = argmax(y_pred.col(j));
+      ny = y_pred.rows();
       labelsPredicted.push_back(to_string(maxi));
     }
     assert(labelsPredicted.size() == y_pred.cols());
@@ -75,6 +80,9 @@ Matrix<double, 3, 2> Model::testSequential(vector<vector<string> > &sents,
     for (uint j=0; j<labels[i].size(); j++) { // per token in a sentence
       t = labels[i][j];
       y = labelsPredicted[j];
+
+      y_hat.push_back(y);
+      y_truth.push_back(t);
 
       if (t != "0") {
         //nExprTrue++;
@@ -165,8 +173,12 @@ Matrix<double, 3, 2> Model::testSequential(vector<vector<string> > &sents,
         }
       }
     }
-
   }
+
+  MatrixXd conf_mat = confusion_matrix(y_hat, y_truth, ny);
+  cout << "Confusion matrix" << endl;
+  cout << conf_mat << endl;
+
   double precisionProp = (nExprPredicted==0) ? 1 : precNumerProp/nExprPredicted;
   double recallProp = recallNumerProp/nExprTrue;
   double f1Prop = (2*precisionProp*recallProp)/(precisionProp+recallProp);
@@ -203,7 +215,7 @@ Model::train(vector<vector<string> > &sents,
       if ((i+1) % mini_batch == 0 || i == sents.size()-1)
         update();
     }
-    if (epoch % 5 == 0) {
+    if (epoch % 10 == 0) {
       Matrix<double, 3, 2> resVal, resTest, resVal2, resTest2;
       cout << "Epoch " << epoch << endl;
 
@@ -211,17 +223,19 @@ Model::train(vector<vector<string> > &sents,
       printResults(testSequential(sents, labels));
 
       resVal = testSequential(validX, validL);
-      resTest = testSequential(testX, testL);
-
       cout << "Validation results" << endl;
       printResults(resVal);
 
+      resTest = testSequential(testX, testL);
       cout << "Test results" << endl;
       printResults(resTest);
+
+      cout << endl;
+      
       if (bestVal(2,0) < resVal(2,0)) {
         bestVal = resVal;
         bestTest = resTest;
-        save(model_name());
+        save("models/" + model_name());
       }
     }
   }

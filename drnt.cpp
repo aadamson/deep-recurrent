@@ -19,10 +19,10 @@
 #include "model.cpp"
 
 #define DROPOUT
-#define ETA 0.001
+#define ETA 0.005
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define OCLASS_WEIGHT 0.5
-#define layers 3 // number of EXTRA (not all) hidden layers
+#define layers 2 // number of EXTRA (not all) hidden layers
 
 #define MR 0.7
 uint fold = -1;
@@ -30,8 +30,9 @@ uint fold = -1;
 using namespace Eigen;
 using namespace std;
 
-double LAMBDA = (layers > 2) ? 1e-3 : 1e-4;  // L2 regularizer on weights
-double LAMBDAH = (layers > 2) ? 1e-5 : 1e-4; //L2 regularizer on activations
+double LAMBDA = (layers > 2) ? 1e-5 : 1e-4;  // L2 regularizer on weights
+//double LAMBDAH = (layers > 2) ? 1e-5 : 1e-4; //L2 regularizer on activations
+double LAMBDAH = 0; //L2 regularizer on activations
 double DROP;
 
 #ifdef DROPOUT
@@ -172,119 +173,110 @@ MatrixXd RNN::forward(const vector<string> &sent) {
 double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   double cost = 0.0;
   uint T = sent.size();
-  MatrixXd x = MatrixXd(nx, T);
 
-  for (uint i=0; i<T; i++)
+  // Build the input x from the embeddings
+  MatrixXd x = MatrixXd(nx, T);
+  for (uint i = 0; i < T; i++) 
     x.col(i) = (*LT)[sent[i]];
 
-  MatrixXd dhb = MatrixXd::Zero(nhb, T);
-  MatrixXd dhf = MatrixXd::Zero(nhf, T);
-
-  MatrixXd dhhf[layers], dhhb[layers];
-  for (uint l=0; l<layers; l++) {
-    dhhf[l] = MatrixXd::Zero(nhf, T);
-    dhhb[l] = MatrixXd::Zero(nhb, T);
-  }
-
   // Create one-hot vectors
-  MatrixXd yi = MatrixXd::Zero(ny, T);
+  MatrixXd y = MatrixXd::Zero(ny, T);
   for (uint i=0; i<T; i++) {
     int label_idx = stoi(labels[i]);
-    yi(label_idx, i) = 1;
+    y(label_idx, i) = 1;
   }
+  MatrixXd y_hat = forward(sent);
 
-  MatrixXd y = forward(sent);
-
-  MatrixXd gpyd = smaxentp(y,yi);
-  for (uint i=0; i<T; i++)
+  // Get error vector propagated by cross-entropy error passed through softmax
+  // output layer
+  MatrixXd delta_y = smaxentp(y_hat, y);
+  // We dampen the error propagated by mis-classifying null-class tokens so that
+  // the model doesn't simply learn the prior
+  for (uint i = 0; i < T; i++) {
     if (labels[i] == "0")
-      gpyd.col(i) *= OCLASS_WEIGHT;
-
-  for (uint l=layers-1; l<layers; l++) {
-    gWWfo[l].noalias() += gpyd * hhf[l].transpose();
-    gWWbo[l].noalias() += gpyd * hhb[l].transpose();
-  }
-  gbo.noalias() += gpyd*VectorXd::Ones(T);
-
-  dhf.noalias() += Wfo.transpose() * gpyd;
-  dhb.noalias() += Wbo.transpose() * gpyd;
-  for (uint l=0; l<layers; l++) {
-    dhhf[l].noalias() += WWfo[l].transpose() * gpyd;
-    dhhb[l].noalias() += WWbo[l].transpose() * gpyd;
+      delta_y.col(i) *= OCLASS_WEIGHT;
   }
 
-  // activation regularize
-  dhf.noalias() += LAMBDAH*hf;
-  dhb.noalias() += LAMBDAH*hb;
-  for (uint l=0; l<layers; l++) {
-    dhhf[l].noalias() += LAMBDAH*hhf[l];
-    dhhb[l].noalias() += LAMBDAH*hhb[l];
+  // Calculate output layer gradients
+  gWWfo[layers-1].noalias() += delta_y * hhf[layers-1].transpose();
+  gWWbo[layers-1].noalias() += delta_y * hhb[layers-1].transpose();
+  gbo.noalias() += delta_y * VectorXd::Ones(T);
+
+  MatrixXd deltaf[layers];
+  MatrixXd deltab[layers];
+  for (uint l = 0; l < layers; l++) {
+    deltaf[l] = MatrixXd::Zero(nhf, T);
+    deltab[l] = MatrixXd::Zero(nhb, T);
   }
+  // Create error vectors propagated by hidden units
+  // Note that ReLU'(x) = ReLU'(ReLU(x)). In general, we assume that for the
+  // hidden unit non-linearity f, f(z) = f'(f(z))
+  for (uint l = layers-1; l != (uint)(-1); l--) {
+    MatrixXd cur_hf = (l == 0) ? hf : hhf[l-1];
+    MatrixXd cur_hb = (l == 0) ? hb : hhb[l-1];
 
-  for (uint l=layers-1; l != (uint)(-1); l--) {
-    MatrixXd *dxf, *dxb, *xf, *xb;
-    dxf = (l == 0) ? &dhf : &(dhhf[l-1]);
-    dxb = (l == 0) ? &dhb : &(dhhb[l-1]);
-    xf = (l == 0) ? &hf : &(hhf[l-1]);
-    xb = (l == 0) ? &hb : &(hhb[l-1]);
+    MatrixXd fpf = fp(hhf[l]);
+    MatrixXd fpb = fp(hhb[l]);
 
-    MatrixXd fphdh = MatrixXd::Zero(nhf,T);
-    for (uint i=T-1; i != (uint)(-1); i--) {
-      // i^th column of drop across ReLU unit is relu(hf_i^l) \cdot deltaf_i^{L}
-      fphdh.col(i) = fp(hhf[l].col(i)).cwiseProduct(dhhf[l].col(i));
-      if (i > 0) {
-        // dVf_l += deltaf_i^l * hf_(i-1)^l.T
-        gVVf[l].noalias() += fphdh.col(i) * hhf[l].col(i-1).transpose();
-        dhhf[l].col(i-1).noalias() += VVf[l].transpose() * fphdh.col(i);
-      }
+    if (l != layers-1) {
+      // Update error vectors by propagating back from layer above and add supervised error signal (i.e. WW(f/b)o * delta_y)
+      deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y + WWff[l+1].transpose() * deltaf[l+1] + WWbf[l+1].transpose() * deltab[l+1]);
+      deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y + WWfb[l+1].transpose() * deltaf[l+1] + WWbb[l+1].transpose() * deltab[l+1]);
+    } else {
+      deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y);
+      deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y);
     }
-    gWWff[l].noalias() += fphdh * xf->transpose();
-    gWWfb[l].noalias() += fphdh * xb->transpose();
-    gbbhf[l].noalias() += fphdh * VectorXd::Ones(T);
-    dxf->noalias() += WWff[l].transpose() * fphdh;
-    dxb->noalias() += WWfb[l].transpose() * fphdh;
 
-    fphdh = MatrixXd::Zero(nhb,T);
-    for (uint i=0; i < T; i++) {
-      fphdh.col(i) = fp(hhb[l].col(i)).cwiseProduct(dhhb[l].col(i));
-      if (i < T-1) {
-        // dh_{t+1}^l_back += V^l_back.T * relu(
-        dhhb[l].col(i+1).noalias() += VVb[l].transpose() * fphdh.col(i);
-        gVVb[l].noalias() += fphdh.col(i) * hhb[l].col(i+1).transpose();
-      }
+    // Update error vectors by propagating back from neighbor. Note that e.g.
+    // the rightmost forward neighbor does not have a neighbor to the right,
+    // so there is nothing to propagate back
+    for (uint t = 1; t < T; t++) {
+      deltab[l].col(t) += fpb.col(t).cwiseProduct(VVb[l].transpose() * deltab[l].col(t-1));
+      gVVb[l].noalias() += deltab[l].col(t-1) * hhb[l].col(t).transpose();
     }
-    gWWbb[l].noalias() += fphdh * xb->transpose();
-    gWWbf[l].noalias() += fphdh * xf->transpose();
-    gbbhb[l].noalias() += fphdh * VectorXd::Ones(T);
-    dxf->noalias() += WWbf[l].transpose() * fphdh;
-    dxb->noalias() += WWbb[l].transpose() * fphdh;
+
+    for (uint t = T-2; t != (uint)(-1); t--) {
+      deltaf[l].col(t) += fpf.col(t).cwiseProduct(VVf[l].transpose() * deltaf[l].col(t+1));
+      gVVf[l].noalias() += deltaf[l].col(t+1) * hhf[l].col(t).transpose();
+    }
+
+    gWWff[l].noalias() += deltaf[l] * cur_hf.transpose();
+    gWWfb[l].noalias() += deltaf[l] * cur_hb.transpose();
+    gbbhf[l].noalias() += deltaf[l] * VectorXd::Ones(T);
+
+    gWWbf[l].noalias() += deltab[l] * cur_hf.transpose();
+    gWWbb[l].noalias() += deltab[l] * cur_hb.transpose();
+    gbbhb[l].noalias() += deltab[l] * VectorXd::Ones(T);
   }
 
-  for (uint i=T-1; i != 0; i--) {
-    VectorXd fphdh = fp(hf.col(i)).cwiseProduct(dhf.col(i));
-    gWf.noalias() += fphdh * x.col(i).transpose();
-    gVf.noalias() += fphdh * hf.col(i-1).transpose();
-    gbhf.noalias() += fphdh;
-    dhf.col(i-1).noalias() += Vf.transpose() * fphdh;
-  }
-  VectorXd fphdh = fp(hf.col(0)).cwiseProduct(dhf.col(0));
-  gWf.noalias() += fphdh * x.col(0).transpose();
-  gbhf.noalias() += fphdh;
+  // Calculate error vectors for input layer
+  MatrixXd deltaf_i = MatrixXd::Zero(nhf, T);
+  MatrixXd deltab_i = MatrixXd::Zero(nhb, T);
 
-  for (uint i=0; i < T-1; i++) {
-    VectorXd fphdh = fp(hb.col(i)).cwiseProduct(dhb.col(i));
-    gWb.noalias() += fphdh * x.col(i).transpose();
-    gVb.noalias() += fphdh * hb.col(i+1).transpose();
-    gbhb.noalias() += fphdh;
-    dhb.col(i+1).noalias() += Vb.transpose() * fphdh;
+  MatrixXd fpf = fp(hf);
+  MatrixXd fpb = fp(hb);
+
+  deltaf_i.noalias() += fpf.cwiseProduct(Wfo.transpose() * delta_y + WWff[0].transpose() * deltaf[0] + WWbf[0].transpose() * deltab[0]);
+  deltab_i.noalias() += fpb.cwiseProduct(Wbo.transpose() * delta_y + WWfb[0].transpose() * deltaf[0] + WWbb[0].transpose() * deltab[0]);
+
+  for (uint t = T-2; t < (uint)(-1); t--) {
+    deltaf_i.col(t) += fpf.col(t).cwiseProduct(Vf.transpose() * deltaf_i.col(t+1));
+    gVf.noalias() += deltaf_i.col(t+1) * hf.col(t).transpose();
   }
-  fphdh = fp(hb.col(T-1)).cwiseProduct(dhb.col(T-1));
-  gWb.noalias() += fphdh * x.col(T-1).transpose();
-  gbhb.noalias() += fphdh;
+  for (uint t = 1; t < T; t++) {
+    deltab_i.col(t) += fpb.col(t).cwiseProduct(Vb.transpose() * deltab_i.col(t-1));
+    gVb.noalias() += deltab_i.col(t-1) * hb.col(t).transpose();
+  }
+
+  // Calculate input layer gradients
+  gWf.noalias() += deltaf_i * x.transpose();
+  gWb.noalias() += deltab_i * x.transpose();
+
+  gbhf.noalias() += deltaf_i * VectorXd::Ones(T);
+  gbhb.noalias() += deltab_i * VectorXd::Ones(T);
 
   return cost;
 }
-
 
 RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT) {
   lr = ETA;
@@ -584,7 +576,7 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 
 string RNN::model_name() {
   ostringstream strS;
-  strS << "models/drnt_" << layers << "_" << nhf << "_"
+  strS << "drnt_" << layers << "_" << nhf << "_"
   << nhb << "_" << DROP << "_"
   << lr << "_" << LAMBDA << "_"
   << MR << "_" << fold;
@@ -604,60 +596,15 @@ int main(int argc, char **argv) {
   vector<vector<string> > T;
   int ny = DataUtils::read_sentences(X, T, argv[2]); // dse.txt or ese.txt
 
-  unordered_map<string, set<uint> > sentenceIds;
-  set<string> allDocs;
-  ifstream in("sentenceid.txt");
-  string line;
-  uint numericId = 0;
-  while(getline(in, line)) {
-    vector<string> s = split(line, ' ');
-    assert(s.size() == 3);
-    string strId = s[2];
-
-    if (sentenceIds.find(strId) != sentenceIds.end()) {
-      sentenceIds[strId].insert(numericId);
-    } else {
-      sentenceIds[strId] = set<uint>();
-      sentenceIds[strId].insert(numericId);
-    }
-    numericId++;
-  }
-
   vector<vector<string> > trainX, validX, testX;
   vector<vector<string> > trainL, validL, testL;
-  vector<bool> isUsed(X.size(), false);
 
-  ifstream in4("datasplit/doclist.mpqaOriginalSubset");
-  while(getline(in4, line))
-    allDocs.insert(line);
+  DataUtils::generate_splits(X, T, trainX, trainL, validX, validL, testX, testL, 0.8, 0.1, 0.1);
 
-  ifstream in2("datasplit/filelist_train"+to_string(fold));
-  while(getline(in2, line)) {
-    for (const auto &id : sentenceIds[line]) {
-      trainX.push_back(X[id]);
-      trainL.push_back(T[id]);
-    }
-    allDocs.erase(line);
-  }
-  ifstream in3("datasplit/filelist_test"+to_string(fold));
-  while(getline(in3, line)) {
-    for (const auto &id : sentenceIds[line]) {
-      testX.push_back(X[id]);
-      testL.push_back(T[id]);
-    }
-    allDocs.erase(line);
-  }
-
-  uint validSize = 0;
-  for (const auto &doc : allDocs) {
-    for (const auto &id : sentenceIds[doc]) {
-      validX.push_back(X[id]);
-      validL.push_back(T[id]);
-    }
-  }
-
-  cout << X.size() << " " << trainX.size() << " " << testX.size() << endl;
-  cout << "Valid size: " << validX.size() << endl;
+  cout << "Total dataset size: " << X.size() << endl;
+  cout << "Training set size: " << trainX.size() << endl;
+  cout << "Validation set size: " << validX.size() << endl;
+  cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
   double bestDrop;
@@ -668,7 +615,7 @@ int main(int argc, char **argv) {
       best = results;
       bestDrop = DROP;
     }
-    brnn.save("model.txt");
+    brnn.save("models/" + brnn.model_name());
   }
   cout << "Best: " << endl;
   cout << "Drop: " << bestDrop << endl;

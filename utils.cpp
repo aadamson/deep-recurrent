@@ -33,6 +33,14 @@ istream& operator>>(istream& s, VectorXd& m) {
 }
 }
 
+MatrixXd confusion_matrix(const vector<string> & y_hat, const vector<string> & y, uint num_classes) {
+  MatrixXd conf_mat = MatrixXd::Zero(num_classes, num_classes);
+  for (int i = 0; i < y.size(); i++) {
+    conf_mat(stoi(y[i]), stoi(y_hat[i])) += 1;
+  }
+  return conf_mat;
+}
+
 MatrixXd softmax(const MatrixXd &x) {
   RowVectorXd m = x.colwise().maxCoeff();
   MatrixXd t = (x.rowwise() - m).array().exp();
@@ -49,6 +57,10 @@ MatrixXd relu(const MatrixXd &x) {
 
 MatrixXd relup(const MatrixXd &x) { 
   return (x.array() > 0).cast<double>();
+}
+
+MatrixXd clip(const MatrixXd &x) {
+  return x.array().min(1e10).max(-1e10);
 }
 
 double str2double(const string& s) {
