@@ -13,19 +13,15 @@
 #include <iterator>
 #include <cassert>
 #include <thread>
+#include <getopt.h>
 #include "Eigen/Dense"
 #include "utils.cpp"
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
 #define DROPOUT
-#define ETA 0.005
 #define NORMALIZE false // keeping this false throughout my own experiments
-#define OCLASS_WEIGHT 0.4
-#define layers 2 // number of EXTRA (not all) hidden layers
-
-#define MR 0.7
-uint fold = -1;
+#define layers 3 // number of EXTRA (not all) hidden layers
 
 using namespace Eigen;
 using namespace std;
@@ -41,7 +37,7 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p=DROP);
 
 class RNN : public Model {
 public:
-  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT);
+  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight);
 
   void save(string fname);
   void load(string fname);
@@ -95,7 +91,7 @@ private:
   uint nx, nhf, nhb, ny;
   uint epoch;
 
-  double lr;
+  float lr, mr, null_class_weight;
 };
 
 MatrixXd RNN::forward(const vector<string> &sent) {
@@ -193,8 +189,8 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   // the model doesn't simply learn the prior
   for (uint i = 0; i < T; i++) {
     if (labels[i] == "0")
-      delta_y.col(i) *= OCLASS_WEIGHT;
-  }
+      delta_y.col(i) *= null_class_weight;
+  } 
 
   // Calculate output layer gradients
   gWWfo[layers-1].noalias() += delta_y * hhf[layers-1].transpose();
@@ -277,15 +273,15 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   return cost;
 }
 
-RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT) {
-  lr = ETA;
-
+RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight) {
   this->LT = &LT;
-
   this->nx = nx;
   this->nhf = nhf;
   this->nhb = nhb;
   this->ny = ny;
+  this->lr = lr;
+  this->mr = mr;
+  this->null_class_weight = null_class_weight;
 
   f = &relu;
   fp = &relup;
@@ -383,7 +379,6 @@ RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT) {
 
 void RNN::update() {
   double lambda = LAMBDA;
-  double mr = MR;
   double norm = 0;
 
   // regularize
@@ -437,20 +432,20 @@ void RNN::update() {
   else
     norm = 1;
 
-  vWf = lr*gWf/norm + mr*vWf;
-  vVf = lr*gVf/norm + mr*vVf;
-  vWb = lr*gWb/norm + mr*vWb;
-  vVb = lr*gVb/norm + mr*vVb;
+  vWf  = lr*gWf/norm  + mr*vWf;
+  vVf  = lr*gVf/norm  + mr*vVf;
+  vWb  = lr*gWb/norm  + mr*vWb;
+  vVb  = lr*gVb/norm  + mr*vVb;
   vbhf = lr*gbhf/norm + mr*vbhf;
   vbhb = lr*gbhb/norm + mr*vbhb;
 
   for (uint l=0; l<layers; l++) {
     vWWff[l] = lr*gWWff[l]/norm + mr*vWWff[l];
     vWWfb[l] = lr*gWWfb[l]/norm + mr*vWWfb[l];
-    vVVf[l] = lr*gVVf[l]/norm + mr*vVVf[l];
+    vVVf[l]  = lr*gVVf[l]/norm  + mr*vVVf[l];
     vWWbb[l] = lr*gWWbb[l]/norm + mr*vWWbb[l];
     vWWbf[l] = lr*gWWbf[l]/norm + mr*vWWbf[l];
-    vVVb[l] = lr*gVVb[l]/norm + mr*vVVb[l];
+    vVVb[l]  = lr*gVVb[l]/norm  + mr*vVVb[l];
     vbbhf[l] = lr*gbbhf[l]/norm + mr*vbbhf[l];
     vbbhb[l] = lr*gbbhb[l]/norm + mr*vbbhb[l];
   }
@@ -462,20 +457,20 @@ void RNN::update() {
     WWbo[l].noalias() -= vWWbo[l];
   }
 
-  Wf.noalias() -= vWf;
-  Vf.noalias() -= vVf;
-  Wb.noalias() -= vWb;
-  Vb.noalias() -= vVb;
+  Wf.noalias()  -= vWf;
+  Vf.noalias()  -= vVf;
+  Wb.noalias()  -= vWb;
+  Vb.noalias()  -= vVb;
   bhf.noalias() -= vbhf;
   bhb.noalias() -= vbhb;
 
   for (uint l=0; l<layers; l++) {
     WWff[l].noalias() -= vWWff[l];
     WWfb[l].noalias() -= vWWfb[l];
-    VVf[l].noalias() -= vVVf[l];
+    VVf[l].noalias()  -= vVVf[l];
     WWbb[l].noalias() -= vWWbb[l];
     WWbf[l].noalias() -= vWWbf[l];
-    VVb[l].noalias() -= vVVb[l];
+    VVb[l].noalias()  -= vVVb[l];
     bbhf[l].noalias() -= vbbhf[l];
     bbhb[l].noalias() -= vbbhb[l];
   }
@@ -510,7 +505,7 @@ void RNN::update() {
 }
 
 bool RNN::is_nan() {
-  return (hf(0) != hf(0));
+  return (bbhf[0](0) != bbhf[0](0));
 }
 
 void RNN::load(string fname) {
@@ -581,23 +576,91 @@ string RNN::model_name() {
   ostringstream strS;
   strS << "drnt_" << layers << "_" << nhf << "_"
   << nhb << "_" << DROP << "_"
-  << lr << "_" << LAMBDA << "_"
-  << MR << "_" << fold;
+  << lr << "_" << LAMBDA << "_" << mr ;
   string fname = strS.str();
   return fname;
 }
 
 int main(int argc, char **argv) {
-  fold = atoi(argv[1]); // between 0-9
-  srand(135);
   cout << setprecision(6);
+
+  // Set default arguments
+  int seed     = 135;
+  float lr     = 0.05;
+  float mr     = 0.7;
+  float null_class_weight = 0.5;
+  string data  = "";
+
+  int c;
+
+  while (1) {
+    static struct option long_options[] =
+      {
+        /* These options don’t set a flag.
+           We distinguish them by their indices. */
+        {"seed",    required_argument, 0, 'a'},
+        {"lr",      required_argument, 0, 'b'},
+        {"mr",      required_argument, 0, 'c'},
+        {"weight",  required_argument, 0, 'd'},
+        {"data",    required_argument, 0, 'f'}      };
+    /* getopt_long stores the option index here. */
+    int option_index = 0;
+
+    c = getopt_long (argc, argv, "a:b:c:d:f:",
+                     long_options, &option_index);    
+
+    /* Detect the end of the options. */
+    if (c == -1)
+      break;
+
+    switch (c) {
+      case 0:
+        /* If this option set a flag, do nothing else now. */
+        if (long_options[option_index].flag != 0)
+          break;
+        printf ("option %s", long_options[option_index].name);
+        if (optarg)
+          printf (" with arg %s", optarg);
+        printf ("\n");
+        break;
+
+      case 'a':
+        seed = stoi(optarg);
+        break;
+
+      case 'b':
+        lr = stof(optarg);
+        break;
+
+      case 'c':
+        mr = stof(optarg);
+        break;
+
+      case 'd':
+        null_class_weight = stof(optarg);
+        break;
+
+      case 'f':
+        data = string(optarg);
+        break;
+
+      case '?':
+        /* getopt_long already printed an error message. */
+        break;
+
+      default:
+        abort ();
+    }
+  }
+
+  srand(seed);
 
   LookupTable LT;
   // i used mikolov's word2vec (300d) for my experiments, not CW
   LT.load("embeddings-original.EMBEDDING_SIZE=25.txt", 268810, 25, false);
   vector<vector<string> > X;
   vector<vector<string> > T;
-  int ny = DataUtils::read_sentences(X, T, argv[2]); // dse.txt or ese.txt
+  int ny = DataUtils::read_sentences(X, T, data);
 
   vector<vector<string> > trainX, validX, testX;
   vector<vector<string> > trainL, validL, testL;
@@ -612,7 +675,8 @@ int main(int argc, char **argv) {
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
   double bestDrop;
   for (DROP=0; DROP<0.1; DROP+=0.2) { // can use this loop for CV
-    RNN brnn(25,25,25,ny,LT);
+    RNN brnn(25,25,25,ny,LT, lr, mr, null_class_weight);
+
     auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
     if (best(2,0) < results(2,0)) { // propF1 on val set
       best = results;
