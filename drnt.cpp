@@ -21,7 +21,7 @@
 #define DROPOUT
 #define ETA 0.005
 #define NORMALIZE false // keeping this false throughout my own experiments
-#define OCLASS_WEIGHT 0.5
+#define OCLASS_WEIGHT 0.4
 #define layers 2 // number of EXTRA (not all) hidden layers
 
 #define MR 0.7
@@ -45,12 +45,11 @@ public:
 
   void save(string fname);
   void load(string fname);
-
   MatrixXd forward(const vector<string> &sent);
   double backward(const vector<string> &sent, 
                   const vector<string> &labels);
   void update();
-
+  bool is_nan();
   string model_name();
 
   LookupTable *LT;
@@ -508,6 +507,10 @@ void RNN::update() {
 
   lr *= 0.999;
   //cout << Wuo << endl;
+}
+
+bool RNN::is_nan() {
+  return (hf(0) != hf(0));
 }
 
 void RNN::load(string fname) {

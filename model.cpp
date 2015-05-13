@@ -16,12 +16,11 @@ class Model {
 public:
   virtual void save(string fname) = 0;
   virtual void load(string fname) = 0;
-  
   virtual MatrixXd forward(const vector<string> &sent) = 0;
   virtual double backward(const vector<string> &sent, 
                           const vector<string> &labels) = 0;
+  virtual bool is_nan() = 0;
   virtual void update() = 0;
-
   virtual string model_name() = 0;
 
   Matrix<double, 6, 2> train(vector<vector<string> > &sents,
@@ -236,6 +235,11 @@ Model::train(vector<vector<string> > &sents,
         bestVal = resVal;
         bestTest = resTest;
         save("models/" + model_name());
+      }
+
+      if (is_nan()) {
+        cout << "Some parameter has become overflowed :(" << endl;
+        break;                                                
       }
     }
   }
