@@ -19,6 +19,7 @@
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
+#define ERROR_SIGNAL
 #define DROPOUT
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define layers 3 // number of EXTRA (not all) hidden layers
@@ -214,9 +215,15 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
     MatrixXd fpb = fp(hhb[l]);
 
     if (l != layers-1) {
-      // Update error vectors by propagating back from layer above and add supervised error signal (i.e. WW(f/b)o * delta_y)
-      deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y + WWff[l+1].transpose() * deltaf[l+1] + WWbf[l+1].transpose() * deltab[l+1]);
-      deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y + WWfb[l+1].transpose() * deltaf[l+1] + WWbb[l+1].transpose() * deltab[l+1]);
+      // Update error vectors by propagating back from layer above
+      deltaf[l].noalias() += fpf.cwiseProduct(WWff[l+1].transpose() * deltaf[l+1] + WWbf[l+1].transpose() * deltab[l+1]);
+      deltab[l].noalias() += fpb.cwiseProduct(WWfb[l+1].transpose() * deltaf[l+1] + WWbb[l+1].transpose() * deltab[l+1]);
+
+#ifdef ERROR_SIGNAL
+      // Add supervised error signal (i.e. WW(f/b)o * delta_y)
+      deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y); 
+      deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y); 
+#endif
     } else {
       deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y);
       deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y);
@@ -251,8 +258,14 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   MatrixXd fpf = fp(hf);
   MatrixXd fpb = fp(hb);
 
-  deltaf_i.noalias() += fpf.cwiseProduct(Wfo.transpose() * delta_y + WWff[0].transpose() * deltaf[0] + WWbf[0].transpose() * deltab[0]);
-  deltab_i.noalias() += fpb.cwiseProduct(Wbo.transpose() * delta_y + WWfb[0].transpose() * deltaf[0] + WWbb[0].transpose() * deltab[0]);
+  deltaf_i.noalias() += fpf.cwiseProduct(WWff[0].transpose() * deltaf[0] + WWbf[0].transpose() * deltab[0]);
+  deltab_i.noalias() += fpb.cwiseProduct(WWfb[0].transpose() * deltaf[0] + WWbb[0].transpose() * deltab[0]);
+
+#ifdef ERROR_SIGNAL
+  // Add supervised error signal (i.e. WW(f/b)o * delta_y)
+  deltaf_i.noalias() += fpf.cwiseProduct(Wfo.transpose() * delta_y); 
+  deltab_i.noalias() += fpb.cwiseProduct(Wbo.transpose() * delta_y); 
+#endif
 
   for (uint t = T-2; t < (uint)(-1); t--) {
     deltaf_i.col(t) += fpf.col(t).cwiseProduct(Vf.transpose() * deltaf_i.col(t+1));
