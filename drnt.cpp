@@ -371,8 +371,6 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   return cost;
 }
 
-
-
 void RNN::update() {
   double lambda = LAMBDA;
   double norm = 0;
