@@ -20,7 +20,6 @@
 #include "model.cpp"
 
 #define ERROR_SIGNAL
-#define DROPOUT
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define layers 3 // number of EXTRA (not all) hidden layers
 
@@ -32,13 +31,11 @@ double LAMBDA = (layers > 2) ? 1e-5 : 1e-4;  // L2 regularizer on weights
 double LAMBDAH = 0; //L2 regularizer on activations
 double DROP;
 
-#ifdef DROPOUT
-Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p=DROP);
-#endif
+Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p);
 
 class RNN : public Model {
 public:
-  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight);
+  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight, float dropout = 0.0);
 
   void save(string fname);
   void load(string fname);
@@ -92,8 +89,105 @@ private:
   uint nx, nhf, nhb, ny;
   uint epoch;
 
-  float lr, mr, null_class_weight;
+  float lr, mr, null_class_weight, dropout_prob;
 };
+
+RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight, float dropout) :
+  LT(&LT), nx(nx), nhf(nhf), nhb(nhb), ny(ny), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout)
+{
+  f = &relu;
+  fp = &relup;
+
+  // init randomly
+  Wf = MatrixXd(nhf,nx).unaryExpr(ptr_fun(urand));
+  Vf = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
+  bhf = VectorXd(nhf).unaryExpr(ptr_fun(urand));
+
+  Wb = MatrixXd(nhb,nx).unaryExpr(ptr_fun(urand));
+  Vb = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
+  bhb = VectorXd(nhb).unaryExpr(ptr_fun(urand));
+
+  for (uint l=0; l<layers; l++) {
+    WWff[l] = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
+    WWfb[l] = MatrixXd(nhf,nhb).unaryExpr(ptr_fun(urand));
+    VVf[l] = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
+    bbhf[l] = VectorXd(nhf).unaryExpr(ptr_fun(urand));
+
+    WWbb[l] = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
+    WWbf[l] = MatrixXd(nhb,nhf).unaryExpr(ptr_fun(urand));
+    VVb[l] = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
+    bbhb[l] = VectorXd(nhb).unaryExpr(ptr_fun(urand));
+  }
+
+  Wfo = MatrixXd(ny,nhf).unaryExpr(ptr_fun(urand));
+  Wbo = MatrixXd(ny,nhb).unaryExpr(ptr_fun(urand));
+  for (uint l=0; l<layers; l++) {
+    WWfo[l] = MatrixXd(ny,nhf).unaryExpr(ptr_fun(urand));
+    WWbo[l] = MatrixXd(ny,nhb).unaryExpr(ptr_fun(urand));
+  }
+  Wo = MatrixXd(ny,nx).unaryExpr(ptr_fun(urand));
+  bo = VectorXd(ny).unaryExpr(ptr_fun(urand));
+
+  gWf = MatrixXd::Zero(nhf,nx);
+  gVf = MatrixXd::Zero(nhf,nhf);
+  gbhf = VectorXd::Zero(nhf);
+
+  gWb = MatrixXd::Zero(nhb,nx);
+  gVb = MatrixXd::Zero(nhb,nhb);
+  gbhb = VectorXd::Zero(nhb);
+
+  for (uint l=0; l<layers; l++) {
+    gWWff[l] = MatrixXd::Zero(nhf,nhf);
+    gWWfb[l] = MatrixXd::Zero(nhf,nhb);
+    gVVf[l] = MatrixXd::Zero(nhf,nhf);
+    gbbhf[l] = VectorXd::Zero(nhf);
+
+    gWWbb[l] = MatrixXd::Zero(nhb,nhb);
+    gWWbf[l] = MatrixXd::Zero(nhb,nhf);
+    gVVb[l] = MatrixXd::Zero(nhb,nhb);
+    gbbhb[l] = VectorXd::Zero(nhb);
+  }
+
+
+  gWfo = MatrixXd::Zero(ny,nhf);
+  gWbo = MatrixXd::Zero(ny,nhb);
+  for (uint l=0; l<layers; l++) {
+    gWWfo[l] = MatrixXd::Zero(ny,nhf);
+    gWWbo[l] = MatrixXd::Zero(ny,nhb);
+  }
+  gWo = MatrixXd::Zero(ny,nx);
+  gbo = VectorXd::Zero(ny);
+
+  vWf = MatrixXd::Zero(nhf,nx);
+  vVf = MatrixXd::Zero(nhf,nhf);
+  vbhf = VectorXd::Zero(nhf);
+
+  vWb = MatrixXd::Zero(nhb,nx);
+  vVb = MatrixXd::Zero(nhb,nhb);
+  vbhb = VectorXd::Zero(nhb);
+
+  for (uint l=0; l<layers; l++) {
+    vWWff[l] = MatrixXd::Zero(nhf,nhf);
+    vWWfb[l] = MatrixXd::Zero(nhf,nhb);
+    vVVf[l] = MatrixXd::Zero(nhf,nhf);
+    vbbhf[l] = VectorXd::Zero(nhf);
+
+    vWWbb[l] = MatrixXd::Zero(nhb,nhb);
+    vWWbf[l] = MatrixXd::Zero(nhb,nhf);
+    vVVb[l] = MatrixXd::Zero(nhb,nhb);
+    vbbhb[l] = VectorXd::Zero(nhb);
+  }
+
+
+  vWfo = MatrixXd::Zero(ny,nhf);
+  vWbo = MatrixXd::Zero(ny,nhb);
+  for (uint l=0; l<layers; l++) {
+    vWWfo[l] = MatrixXd::Zero(ny,nhf);
+    vWWbo[l] = MatrixXd::Zero(ny,nhb);
+  }
+  vWo = MatrixXd::Zero(ny,nx);
+  vbo = VectorXd::Zero(ny);
+}
 
 MatrixXd RNN::forward(const vector<string> &sent) {
   VectorXd dropper;
@@ -112,7 +206,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
   }
 
   MatrixXd Wfx = Wf*x + bhf*RowVectorXd::Ones(T);
-  dropper = dropout(VectorXd::Ones(nhf));
+  dropper = dropout(VectorXd::Ones(nhf), dropout_prob);
   for (uint i=0; i<T; i++) {
     hf.col(i) = (i==0) ? f(Wfx.col(i)) : f(Wfx.col(i) + Vf*hf.col(i-1));
 #ifdef DROPOUT
@@ -121,7 +215,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
   }
 
   MatrixXd Wbx = Wb*x + bhb*RowVectorXd::Ones(T);
-  dropper = dropout(VectorXd::Ones(nhb));
+  dropper = dropout(VectorXd::Ones(nhb), dropout_prob);
   for (uint i=T-1; i!=(uint)(-1); i--) {
     hb.col(i) = (i==T-1) ? f(Wbx.col(i)) : f(Wbx.col(i) + Vb*hb.col(i+1));
 #ifdef DROPOUT
@@ -136,7 +230,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
 
     MatrixXd WWffxf = WWff[l]* *xf + bbhf[l]*RowVectorXd::Ones(T);
     MatrixXd WWfbxb = WWfb[l]* *xb;
-    dropper = dropout(VectorXd::Ones(nhf));
+    dropper = dropout(VectorXd::Ones(nhf), dropout_prob);
     for (uint i=0; i<T; i++) {
       hhf[l].col(i) = (i==0) ? f(WWffxf.col(i) + WWfbxb.col(i))
                              : f(WWffxf.col(i) + WWfbxb.col(i) +
@@ -148,7 +242,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
 
     MatrixXd WWbfxf = WWbf[l]* *xf + bbhb[l]*RowVectorXd::Ones(T);
     MatrixXd WWbbxb = WWbb[l]* *xb;
-    dropper = dropout(VectorXd::Ones(nhb));
+    dropper = dropout(VectorXd::Ones(nhb), dropout_prob);
     for (uint i=T-1; i!=(uint)(-1); i--) {
       hhb[l].col(i) = (i==T-1) ? f(WWbbxb.col(i) + WWbfxf.col(i))
                                : f(WWbbxb.col(i) + WWbfxf.col(i) +
@@ -286,109 +380,7 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   return cost;
 }
 
-RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight) {
-  this->LT = &LT;
-  this->nx = nx;
-  this->nhf = nhf;
-  this->nhb = nhb;
-  this->ny = ny;
-  this->lr = lr;
-  this->mr = mr;
-  this->null_class_weight = null_class_weight;
 
-  f = &relu;
-  fp = &relup;
-
-  // init randomly
-  Wf = MatrixXd(nhf,nx).unaryExpr(ptr_fun(urand));
-  Vf = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
-  bhf = VectorXd(nhf).unaryExpr(ptr_fun(urand));
-
-  Wb = MatrixXd(nhb,nx).unaryExpr(ptr_fun(urand));
-  Vb = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
-  bhb = VectorXd(nhb).unaryExpr(ptr_fun(urand));
-
-  for (uint l=0; l<layers; l++) {
-    WWff[l] = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
-    WWfb[l] = MatrixXd(nhf,nhb).unaryExpr(ptr_fun(urand));
-    VVf[l] = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
-    bbhf[l] = VectorXd(nhf).unaryExpr(ptr_fun(urand));
-
-    WWbb[l] = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
-    WWbf[l] = MatrixXd(nhb,nhf).unaryExpr(ptr_fun(urand));
-    VVb[l] = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
-    bbhb[l] = VectorXd(nhb).unaryExpr(ptr_fun(urand));
-  }
-
-  Wfo = MatrixXd(ny,nhf).unaryExpr(ptr_fun(urand));
-  Wbo = MatrixXd(ny,nhb).unaryExpr(ptr_fun(urand));
-  for (uint l=0; l<layers; l++) {
-    WWfo[l] = MatrixXd(ny,nhf).unaryExpr(ptr_fun(urand));
-    WWbo[l] = MatrixXd(ny,nhb).unaryExpr(ptr_fun(urand));
-  }
-  Wo = MatrixXd(ny,nx).unaryExpr(ptr_fun(urand));
-  bo = VectorXd(ny).unaryExpr(ptr_fun(urand));
-
-  gWf = MatrixXd::Zero(nhf,nx);
-  gVf = MatrixXd::Zero(nhf,nhf);
-  gbhf = VectorXd::Zero(nhf);
-
-  gWb = MatrixXd::Zero(nhb,nx);
-  gVb = MatrixXd::Zero(nhb,nhb);
-  gbhb = VectorXd::Zero(nhb);
-
-  for (uint l=0; l<layers; l++) {
-    gWWff[l] = MatrixXd::Zero(nhf,nhf);
-    gWWfb[l] = MatrixXd::Zero(nhf,nhb);
-    gVVf[l] = MatrixXd::Zero(nhf,nhf);
-    gbbhf[l] = VectorXd::Zero(nhf);
-
-    gWWbb[l] = MatrixXd::Zero(nhb,nhb);
-    gWWbf[l] = MatrixXd::Zero(nhb,nhf);
-    gVVb[l] = MatrixXd::Zero(nhb,nhb);
-    gbbhb[l] = VectorXd::Zero(nhb);
-  }
-
-
-  gWfo = MatrixXd::Zero(ny,nhf);
-  gWbo = MatrixXd::Zero(ny,nhb);
-  for (uint l=0; l<layers; l++) {
-    gWWfo[l] = MatrixXd::Zero(ny,nhf);
-    gWWbo[l] = MatrixXd::Zero(ny,nhb);
-  }
-  gWo = MatrixXd::Zero(ny,nx);
-  gbo = VectorXd::Zero(ny);
-
-  vWf = MatrixXd::Zero(nhf,nx);
-  vVf = MatrixXd::Zero(nhf,nhf);
-  vbhf = VectorXd::Zero(nhf);
-
-  vWb = MatrixXd::Zero(nhb,nx);
-  vVb = MatrixXd::Zero(nhb,nhb);
-  vbhb = VectorXd::Zero(nhb);
-
-  for (uint l=0; l<layers; l++) {
-    vWWff[l] = MatrixXd::Zero(nhf,nhf);
-    vWWfb[l] = MatrixXd::Zero(nhf,nhb);
-    vVVf[l] = MatrixXd::Zero(nhf,nhf);
-    vbbhf[l] = VectorXd::Zero(nhf);
-
-    vWWbb[l] = MatrixXd::Zero(nhb,nhb);
-    vWWbf[l] = MatrixXd::Zero(nhb,nhf);
-    vVVb[l] = MatrixXd::Zero(nhb,nhb);
-    vbbhb[l] = VectorXd::Zero(nhb);
-  }
-
-
-  vWfo = MatrixXd::Zero(ny,nhf);
-  vWbo = MatrixXd::Zero(ny,nhb);
-  for (uint l=0; l<layers; l++) {
-    vWWfo[l] = MatrixXd::Zero(ny,nhf);
-    vWWbo[l] = MatrixXd::Zero(ny,nhb);
-  }
-  vWo = MatrixXd::Zero(ny,nx);
-  vbo = VectorXd::Zero(ny);
-}
 
 void RNN::update() {
   double lambda = LAMBDA;
@@ -575,7 +567,6 @@ void RNN::save(string fname) {
   out << bo << endl;
 }
 
-#ifdef DROPOUT
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
   for (uint i=0; i<x.size(); i++) {
     if ((double)rand()/RAND_MAX < p)
@@ -583,7 +574,6 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
   }
   return x;
 }
-#endif
 
 string RNN::model_name() {
   ostringstream strS;
@@ -602,6 +592,7 @@ int main(int argc, char **argv) {
   float lr     = 0.05;
   float mr     = 0.7;
   float null_class_weight = 0.5;
+  float dropout_prob = 0.0;
   string data  = "";
 
   int c;
@@ -609,17 +600,17 @@ int main(int argc, char **argv) {
   while (1) {
     static struct option long_options[] =
       {
-        /* These options don’t set a flag.
-           We distinguish them by their indices. */
-        {"seed",    required_argument, 0, 'a'},
-        {"lr",      required_argument, 0, 'b'},
-        {"mr",      required_argument, 0, 'c'},
-        {"weight",  required_argument, 0, 'd'},
-        {"data",    required_argument, 0, 'f'}      };
+        {"seed",   required_argument, 0, 'a'},
+        {"lr",     required_argument, 0, 'b'},
+        {"mr",     required_argument, 0, 'c'},
+        {"weight", required_argument, 0, 'd'},
+        {"data",   required_argument, 0, 'f'},
+        {"dr",     required_argument, 0, 'g'},       
+      };
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:b:c:d:f:",
+    c = getopt_long (argc, argv, "a:b:c:d:f:g:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -657,6 +648,10 @@ int main(int argc, char **argv) {
         data = string(optarg);
         break;
 
+      case 'g':
+        dropout_prob = stof(optarg);
+        break;
+
       case '?':
         /* getopt_long already printed an error message. */
         break;
@@ -686,20 +681,11 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  double bestDrop;
-  for (DROP=0; DROP<0.1; DROP+=0.2) { // can use this loop for CV
-    RNN brnn(25,25,25,ny,LT, lr, mr, null_class_weight);
+  RNN brnn(25,25,25,ny,LT, lr, mr, null_class_weight, dropout_prob);
 
-    auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
-    if (best(2,0) < results(2,0)) { // propF1 on val set
-      best = results;
-      bestDrop = DROP;
-    }
-    brnn.save("models/" + brnn.model_name());
-  }
-  cout << "Best: " << endl;
-  cout << "Drop: " << bestDrop << endl;
-  cout << best << endl;
+  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
+  
+  cout << results << endl;
 
   return 0;
 }
