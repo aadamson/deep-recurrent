@@ -29,7 +29,6 @@ using namespace std;
 double LAMBDA = (layers > 2) ? 1e-5 : 1e-4;  // L2 regularizer on weights
 //double LAMBDAH = (layers > 2) ? 1e-5 : 1e-4; //L2 regularizer on activations
 double LAMBDAH = 0; //L2 regularizer on activations
-double DROP;
 
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p);
 
@@ -209,18 +208,14 @@ MatrixXd RNN::forward(const vector<string> &sent) {
   dropper = dropout(VectorXd::Ones(nhf), dropout_prob);
   for (uint i=0; i<T; i++) {
     hf.col(i) = (i==0) ? f(Wfx.col(i)) : f(Wfx.col(i) + Vf*hf.col(i-1));
-#ifdef DROPOUT
     hf.col(i) = hf.col(i).cwiseProduct(dropper);
-#endif
   }
 
   MatrixXd Wbx = Wb*x + bhb*RowVectorXd::Ones(T);
   dropper = dropout(VectorXd::Ones(nhb), dropout_prob);
   for (uint i=T-1; i!=(uint)(-1); i--) {
     hb.col(i) = (i==T-1) ? f(Wbx.col(i)) : f(Wbx.col(i) + Vb*hb.col(i+1));
-#ifdef DROPOUT
     hb.col(i) = hb.col(i).cwiseProduct(dropper);
-#endif
   }
 
   for (uint l=0; l<layers; l++) {
@@ -235,9 +230,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
       hhf[l].col(i) = (i==0) ? f(WWffxf.col(i) + WWfbxb.col(i))
                              : f(WWffxf.col(i) + WWfbxb.col(i) +
                                  VVf[l]*hhf[l].col(i-1));
-#ifdef DROPOUT
       hhf[l].col(i) = hhf[l].col(i).cwiseProduct(dropper);
-#endif
     }
 
     MatrixXd WWbfxf = WWbf[l]* *xf + bbhb[l]*RowVectorXd::Ones(T);
@@ -247,9 +240,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
       hhb[l].col(i) = (i==T-1) ? f(WWbbxb.col(i) + WWbfxf.col(i))
                                : f(WWbbxb.col(i) + WWbfxf.col(i) +
                                    VVb[l]*hhb[l].col(i+1));
-#ifdef DROPOUT
       hhb[l].col(i) = hhb[l].col(i).cwiseProduct(dropper);
-#endif
     }
   }
 
