@@ -1,0 +1,133 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+%\usepackage{fullpage}
+\usepackage[top=1in, bottom=0.8in, left=0.4in, right=0.4in]{geometry}
+\usepackage{multicol}
+\usepackage{subcaption}
+\usepackage{wrapfig}
+\usepackage{graphicx,fancyhdr}
+\usepackage{mathtools}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{amssymb}
+\usepackage{tikz}
+\usepackage{siunitx}
+\usepackage{dsfont}
+\usetikzlibrary{arrows}
+
+\let\oldref\ref
+\renewcommand{\ref}[1]{(\oldref{#1})}
+
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+\DeclarePairedDelimiter{\floor}{\lfloor}{\rfloor}
+
+\setlength{\columnsep}{0.1pc}
+
+\fancypagestyle{plain}{}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[RO,LE]{\sffamily\bfseries\large Stanford University}
+\fancyhead[LO,RE]{\sffamily\bfseries\large CS224d}
+\fancyfoot[LO,RE]{\sffamily\bfseries\large Alex Adamson}
+\fancyfoot[RO,LE]{\sffamily\bfseries\thepage}
+\renewcommand{\headrulewidth}{1pt}
+\renewcommand{\footrulewidth}{1pt}
+
+\title{Deep Recurrent Neural Network with Gated Recurrent Units}
+\author{Alex Adamson \\ \texttt{aadamson@stanford.edu}}
+\date{\today}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\pd}[1]{\frac{\partial}{\partial #1}}
+\newcommand{\pdeq}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\indicator}[1]{\mathds{1}[#1]}
+
+
+\sisetup{mode = math}
+
+\begin{document}
+
+  \maketitle
+
+  \vspace{-0.3in}
+  \rule{\linewidth}{0.4pt}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \section{Network specification}
+
+    This network is an extension of the network introduced in Irsoy and Cardie, 2014. The transfer functions between the units in a single layer now use gated recurrent methods.
+
+    For $i > 1$, we have
+    \begin{align}
+      \overrightarrow{z}_t^{(i)} &= f_2(\underrightarrow{\overrightarrow{Wz}}^{(i)} \overrightarrow{h}_t^{(i-1)} + \underleftarrow{\overrightarrow{Wz}}^{(i)} \overleftarrow{h}_t^{(i-1)} + \overrightarrow{Vz}^{(i)} \overrightarrow{h}_{t-1}^{(i)}) \\
+      \overrightarrow{r}_t^{(i)} &= f_2(\underrightarrow{\overrightarrow{Wr}}^{(i)} \overrightarrow{h}_t^{(i-1)} + \underleftarrow{\overrightarrow{Wr}}^{(i)} \overleftarrow{h}_t^{(i-1)} + \overrightarrow{Vr}^{(i)} \overrightarrow{h}_{t-1}^{(i)}) \\
+      \widetilde{\overrightarrow{h}}_t^{(i)} &= f(\underrightarrow{\overrightarrow{W}}^{(i)} \overrightarrow{h}_t^{(i-1)} + \underleftarrow{\overrightarrow{W}}^{(i)} \overleftarrow{h}_t^{(i-1)} + \overrightarrow{r}_t^{(i)} \circ \overrightarrow{V}^{(i)} \overrightarrow{h}_{t-1}^{(i)}) \\
+      \overrightarrow{h}_t^{(i)} &= \overrightarrow{z}_t^{(i)} \circ \overrightarrow{h}_{t-1}^{(i)} + (1 - \overrightarrow{z}_t^{(i)}) \circ \widetilde{\overrightarrow{h}}_t^{(i)} \\
+      \overleftarrow{r}_t^{(i)} &= f_2(\underrightarrow{\overleftarrow{Wr}}^{(i)} \overrightarrow{h}_t^{(i-1)} + \underleftarrow{\overleftarrow{Wr}}^{(i)} \overleftarrow{h}_t^{(i-1)} + \overleftarrow{Vr}^{(i)} \overleftarrow{h}_{t+1}^{(i)}) \\
+      \overleftarrow{z}_t^{(i)} &= f_2(\underrightarrow{\overleftarrow{Wz}}^{(i)} \overrightarrow{h}_t^{(i-1)} + \underleftarrow{\overleftarrow{Wz}}^{(i)} \overleftarrow{h}_t^{(i-1)} + \overleftarrow{Vz}^{(i)} \overleftarrow{h}_{t+1}^{(i)}) \\
+      \widetilde{\overleftarrow{h}}_t^{(i)} &= f(\underrightarrow{\overleftarrow{W}}^{(i)} \overrightarrow{h}_t^{(i-1)} + \underleftarrow{\overleftarrow{W}}^{(i)} \overleftarrow{h}_t^{(i-1)} + \overleftarrow{r}_t^{(i)} \circ \overleftarrow{V}^{(i)} \overleftarrow{h}_{t=1}^{(i)}) \\
+      \overleftarrow{h}_t^{(i)} &= \overleftarrow{z}_t^{(i)} \circ \overleftarrow{h}_{t+1}^{(i)} + (1 - \overleftarrow{z}_t^{(i)}) \circ \widetilde{\overleftarrow{h}}_t^{(i)}
+    \end{align}
+    and for $i = 1$ we have
+    \begin{align}
+      \overrightarrow{h}_t^{(1)} &= f(\overrightarrow{W}^{(1)} x_t + \overrightarrow{V}^{(1)} \overrightarrow{h}_{t-1}^{(1)} + \overrightarrow{b}^{(1)}) \\
+      \overleftarrow{h}_t^{(1)} &= f(\overleftarrow{W}^{(1)} x_t + \overleftarrow{V}^{(1)} \overleftarrow{h}_{t+1}^{(1)} + \overleftarrow{b}^{(1)})
+    \end{align}
+
+    We only connect the last layer (which we denote layer $L$) to the output layer:
+    \begin{align}
+      y_t &= g(\underrightarrow{U} \overrightarrow{h}_{t}^{(L)} + \underleftarrow{U} \overleftarrow{h}_{t}^{(L)} + c)
+    \end{align}
+
+  \section{Backpropagation derivation}
+
+    We again use error vector notation when deriving the gradients via backpropagation.
+
+    Let $\delta_t^y$ be the error vector propagated by the softmax unit at timestep t. Note that this is unchanged from the original network.
+
+    Let $\overrightarrow{\delta}_t^{(i)}$ be the error vector propagated by the 
+    forward hidden unit in layer $i$ at timestep t.
+
+    Let $\overleftarrow{\delta}_t^{(i)}$ be the error vector propagated by the 
+    backward hidden unit in layer $i$ at timestep t.
+
+    We first derive $\overrightarrow{\delta}_t^{(i)}$. Let $f_2^*$ be a function such that $f_2^* (f_2 (x)) = f_2 ' (x)$. Let $f^*$ be the function such that $f^* (f(x)) = f'(x)$. Then,
+    \begin{align*}
+      \overrightarrow{\delta}_t^{(i)} &= \pdeq{\overrightarrow{h}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \pdeq{J}{\overrightarrow{h}_t^{(i+1)}} + \pdeq{\overleftarrow{h}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \pdeq{J}{\overleftarrow{h}_t^{(i+1)}} + \pdeq{\overrightarrow{h}_{t+1}^{i}}{\overrightarrow{h}_t^{(i)}} \pdeq{J}{\overrightarrow{h}_{t+1}^{i}}
+    \end{align*} 
+
+    % TODO: fix the gradients with respect to h_tilde of the first two components
+    \begin{align*}
+      \pdeq{\overrightarrow{h}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \pdeq{J}{\overrightarrow{h}_t^{(i+1)}} &= \pdeq{\overrightarrow{h}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \cdot \overrightarrow{\delta}_t^{(i+1)} \\
+      &= (\pdeq{\overrightarrow{z}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \circ \overrightarrow{h}_{t-1}^{(i+1)} + \pdeq{(1 - \overrightarrow{z}_t^{(i+1)})}{\overrightarrow{h}_t^{(i)}} \circ \widetilde{\overrightarrow{h}}_{t}^{(i+1)} + (1 - \overrightarrow{z}_t^{(i+1)}) \circ \pdeq{\widetilde{\overrightarrow{h}}_{t}^{(i+1)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_t^{(i+1)} \\
+      &= (\pdeq{\overrightarrow{z}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \circ (\overrightarrow{h}_{t-1}^{(i+1)} - \widetilde{\overrightarrow{h}}_{t}^{(i+1)}) + (1 - \overrightarrow{z}_t^{(i+1)}) \circ \pdeq{\widetilde{\overrightarrow{h}}_{t}^{(i+1)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_t^{(i+1)} \\
+      &= ((f_2^* (\overrightarrow{z}_t^{(i+1)}) \circ (\underrightarrow{\overrightarrow{Wz}}^{(i+1)})^T) \circ (\overrightarrow{h}_{t-1}^{(i+1)} - \widetilde{\overrightarrow{h}}_{t}^{(i+1)}) + (1 - \overrightarrow{z}_t^{(i+1)}) \circ \pdeq{\widetilde{\overrightarrow{h}}_{t}^{(i+1)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_t^{(i+1)} \\
+      &= ((f_2^* (\overrightarrow{z}_t^{(i+1)}) \circ (\underrightarrow{\overrightarrow{Wz}}^{(i+1)})^T) \circ (\overrightarrow{h}_{t-1}^{(i+1)} - \widetilde{\overrightarrow{h}}_{t}^{(i+1)}) + (1 - \overrightarrow{z}_t^{(i+1)}) \circ f^*(\widetilde{\overrightarrow{h}}_{t}^{(i+1)}) \circ (\underrightarrow{\overrightarrow{Wr}}^{(i+1)})^T) \cdot \overrightarrow{\delta}_t^{(i+1)}
+    \end{align*}
+
+    \begin{align*}
+      \pdeq{\overleftarrow{h}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \pdeq{J}{\overleftarrow{h}_t^{(i+1)}} &= \pdeq{\overleftarrow{h}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \cdot \overleftarrow{\delta}_t^{(i+1)} \\
+      &= (\pdeq{\overleftarrow{z}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \circ \overleftarrow{h}_{t+1}^{(i+1)} + \pdeq{(1 - \overleftarrow{z}_t^{(i+1)})}{\overrightarrow{h}_t^{(i)}} \circ \widetilde{\overleftarrow{h}}_{t}^{(i+1)} + (1 - \overleftarrow{z}_t^{(i+1)}) \circ \pdeq{\widetilde{\overleftarrow{h}}_{t}^{(i+1)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overleftarrow{\delta}_t^{(i+1)} \\
+      &= (\pdeq{\overleftarrow{z}_t^{(i+1)}}{\overrightarrow{h}_t^{(i)}} \circ (\overleftarrow{h}_{t+1}^{(i+1)} - \widetilde{\overleftarrow{h}}_{t}^{(i+1)}) + (1 - \overleftarrow{z}_t^{(i+1)}) \circ \pdeq{\widetilde{\overleftarrow{h}}_{t}^{(i+1)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overleftarrow{\delta}_t^{(i+1)} \\
+      &= ((f_2^* (\overleftarrow{z}_t^{(i+1)}) \circ (\underrightarrow{\overleftarrow{Wz}}^{(i+1)})^T) \circ (\overleftarrow{h}_{t+1}^{(i+1)} - \widetilde{\overleftarrow{h}}_{t}^{(i+1)}) + (1 - \overleftarrow{z}_t^{(i+1)}) \circ \pdeq{\widetilde{\overleftarrow{h}}_{t}^{(i+1)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overleftarrow{\delta}_t^{(i+1)} \\
+      &= ((f_2^* (\overleftarrow{z}_t^{(i+1)}) \circ (\underrightarrow{\overleftarrow{Wz}}^{(i+1)})^T) \circ (\overleftarrow{h}_{t+1}^{(i+1)} - \widetilde{\overleftarrow{h}}_{t}^{(i+1)}) + (1 - \overleftarrow{z}_t^{(i+1)}) \circ f^*(\widetilde{\overleftarrow{h}}_{t}^{(i+1)}) \circ (\underrightarrow{\overleftarrow{Wr}}^{(i+1)})^T) \cdot \overleftarrow{\delta}_t^{(i+1)}
+    \end{align*}
+
+    \begin{align*}
+      \pdeq{\overrightarrow{h}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}} \pdeq{J}{\overrightarrow{h}_{t+1}^{(i)}} &= \pdeq{\overrightarrow{h}_{t+1}^{(i0}}{\overrightarrow{h}_t^{(i)}} \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+      &= (\overrightarrow{z}_{t+1}^{(i)} + \pdeq{\overrightarrow{z}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}} \circ \overrightarrow{h}_{t}^{(i)} + \pdeq{(1 - \overrightarrow{z}_{t+1}^{(i)})}{\overrightarrow{h}_t^{(i)}} \circ \widetilde{\overrightarrow{h}}_{t+1}^{(i)} + (1 - \overrightarrow{z}_{t+1}^{(i)}) \circ \pdeq{\widetilde{\overrightarrow{h}}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+      &= (\overrightarrow{z}_{t+1}^{(i)} + \pdeq{\overrightarrow{z}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}} \circ (\overrightarrow{h}_{t}^{(i)} - \widetilde{\overrightarrow{h}}_{t+1}^{(i)}) + (1 - \overrightarrow{z}_{t+1}^{(i)}) \circ \pdeq{\widetilde{\overrightarrow{h}}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+      &= (\overrightarrow{z}_{t+1}^{(i)} + (f_2^* (\overrightarrow{z}_{t+1}^{(i)}) \circ (\overrightarrow{Vz}^{(i)})^T) \circ (\overrightarrow{h}_{t}^{(i)} - \widetilde{\overrightarrow{h}}_{t+1}^{(i)}) + (1 - \overrightarrow{z}_{t+1}^{(i)}) \circ \pdeq{\widetilde{\overrightarrow{h}}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+      &= (\overrightarrow{z}_{t+1}^{(i)} + (f_2^* (\overrightarrow{z}_{t+1}^{(i)}) \circ (\overrightarrow{Vz}^{(i)})^T) \circ (\overrightarrow{h}_{t}^{(i)} - \widetilde{\overrightarrow{h}}_{t+1}^{(i)}) \\
+      &\phantom{{}= (} + (1 - \overrightarrow{z}_{t+1}^{(i)}) \circ f^*(\widetilde{\overrightarrow{h}}_{t+1}^{(i)}) \circ \pdeq{(\overrightarrow{r}_{t+1}^{(i)} \circ \overrightarrow{V}^{(i)} \overrightarrow{h}_{t}^{(i)})}{\overrightarrow{h}_t^{(i)}}) \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+      &= (\overrightarrow{z}_{t+1}^{(i)} + (f_2^* (\overrightarrow{z}_{t+1}^{(i)}) \circ (\overrightarrow{Vz}^{(i)})^T) \circ (\overrightarrow{h}_{t}^{(i)} - \widetilde{\overrightarrow{h}}_{t+1}^{(i)}) \\
+      &\phantom{{}= (} + (1 - \overrightarrow{z}_{t+1}^{(i)}) \circ f^*(\widetilde{\overrightarrow{h}}_{t+1}^{(i)}) \circ (\pdeq{\overrightarrow{r}_{t+1}^{(i)}}{\overrightarrow{h}_t^{(i)}} + \pdeq{\overrightarrow{V}^{(i)} \overrightarrow{h}_{t}^{(i)}}{\overrightarrow{h}_t^{(i)}})) \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+      &= (\overrightarrow{z}_{t+1}^{(i)} + (f_2^* (\overrightarrow{z}_{t+1}^{(i)}) \circ (\overrightarrow{Vz}^{(i)})^T) \circ (\overrightarrow{h}_{t}^{(i)} - \widetilde{\overrightarrow{h}}_{t+1}^{(i)}) \\
+      &\phantom{{}= (} + (1 - \overrightarrow{z}_{t+1}^{(i)}) \circ f^*(\widetilde{\overrightarrow{h}}_{t+1}^{(i)}) \circ (f_2^* (\overrightarrow{r}_{t+1}^{(i)}) \circ (\overrightarrow{Vr}^{(i)})^T + (\overrightarrow{V}^{(i)})^T)) \cdot \overrightarrow{\delta}_{t+1}^{(i)} \\
+    \end{align*}
+
+
+
+\end{document}
