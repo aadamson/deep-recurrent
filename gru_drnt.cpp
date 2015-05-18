@@ -47,7 +47,6 @@ public:
   void grad_check(vector<string> &sentence, vector<string> &labels);
   MatrixXd numerical_gradient(MatrixXd &parameter, vector<string> &sentence, vector<string> &labels);
   double cost(const vector<string> &sent, const vector<string> &labels);
-  void clear_gradients();
 
   LookupTable *LT;
 
@@ -406,7 +405,7 @@ MatrixXd GRURNN::forward(const vector<string> &sent) {
 
   // Forward units at the input layer
   MatrixXd Wzfx = Wzf * x + bzhf * RowVectorXd::Ones(T);
-  MatrixXd Wrfx = Wzf * x + brhf * RowVectorXd::Ones(T);
+  MatrixXd Wrfx = Wrf * x + brhf * RowVectorXd::Ones(T);
   MatrixXd Wfx = Wf * x + bhf * RowVectorXd::Ones(T);
   dropper = dropout(VectorXd::Ones(nh), dropout_prob);
   for (uint t = 0; t < T; t++) {
@@ -421,12 +420,12 @@ MatrixXd GRURNN::forward(const vector<string> &sent) {
       htf.col(t) = f(Wfx.col(t) + rf.col(t).cwiseProduct(Vf * hf.col(t-1)));
       hf.col(t) = zf.col(t).cwiseProduct(hf.col(t-1)) + (VectorXd::Ones(nh) - zf.col(t)).cwiseProduct(htf.col(t));
     }
-    hf.col(t) = hf.col(t).cwiseProduct(dropper);
+    //hf.col(t) = hf.col(t).cwiseProduct(dropper);
   }
 
   // Backward units at the input layer
   MatrixXd Wzbx = Wzb * x + bzhb * RowVectorXd::Ones(T);
-  MatrixXd Wrbx = Wzb * x + brhb * RowVectorXd::Ones(T);
+  MatrixXd Wrbx = Wrb * x + brhb * RowVectorXd::Ones(T);
   MatrixXd Wbx = Wb * x + bhb * RowVectorXd::Ones(T);
   dropper = dropout(VectorXd::Ones(nh), dropout_prob);
   for (uint t = T-1; t != (uint)(-1); t--) {
@@ -441,7 +440,7 @@ MatrixXd GRURNN::forward(const vector<string> &sent) {
       htb.col(t) = f(Wbx.col(t) + rb.col(t).cwiseProduct(Vb * hb.col(t+1)));
       hb.col(t) = zb.col(t).cwiseProduct(hb.col(t+1)) + (VectorXd::Ones(nh) - zb.col(t)).cwiseProduct(htb.col(t));
     }
-    hb.col(t) = hb.col(t).cwiseProduct(dropper);
+    //hb.col(t) = hb.col(t).cwiseProduct(dropper);
   }
 
   for (uint l = 0; l < layers; l++) {
@@ -471,7 +470,7 @@ MatrixXd GRURNN::forward(const vector<string> &sent) {
         hhtf[l].col(t) = f(WWffxf.col(t) + WWfbxb.col(t) + rrf[l].col(t).cwiseProduct(VVf[l]*hhf[l].col(t-1)));
         hhf[l].col(t)  = zzf[l].col(t).cwiseProduct(hhf[l].col(t-1)) + (VectorXd::Ones(nh) - zzf[l].col(t)).cwiseProduct(hhtf[l].col(t));
       }
-      hhf[l].col(t) = hhf[l].col(t).cwiseProduct(dropper);
+      //hhf[l].col(t) = hhf[l].col(t).cwiseProduct(dropper);
     }
 
     MatrixXd WWbfxf = WWbf[l]* *xf + bbhb[l]*RowVectorXd::Ones(T);
@@ -496,7 +495,7 @@ MatrixXd GRURNN::forward(const vector<string> &sent) {
         hhtb[l].col(t) = f(WWbfxf.col(t) + WWbbxb.col(t) + rrb[l].col(t).cwiseProduct(VVb[l]*hhb[l].col(t+1)));
         hhb[l].col(t)  = zzb[l].col(t).cwiseProduct(hhb[l].col(t+1)) + (VectorXd::Ones(nh) - zzb[l].col(t)).cwiseProduct(hhtb[l].col(t));
       }
-      hhb[l].col(t) = hhb[l].col(t).cwiseProduct(dropper);
+      //hhb[l].col(t) = hhb[l].col(t).cwiseProduct(dropper);
     }
   }
 
@@ -553,10 +552,10 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
   MatrixXd delta_y = smaxentp(y_hat, y);
   // We dampen the error propagated by mis-classifying null-class tokens so that
   // the model doesn't simply learn the prior
-  // for (uint i = 0; i < T; i++) {
-  //   if (labels[i] == "0")
-  //     delta_y.col(i) *= null_class_weight;
-  // }
+  for (uint i = 0; i < T; i++) {
+    if (labels[i] == "0")
+      delta_y.col(i) *= null_class_weight;
+  }
 
   // Calculate output layer gradients
   gWWfo[layers-1].noalias() += delta_y * hhf[layers-1].transpose();
@@ -682,136 +681,365 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
       deltab[l].noalias() += WWrbb[l].transpose() * dJdrrb;
       deltab[l].noalias() += WWbb[l].transpose() * dJdhhtb;
     }
+
+    #ifdef ERROR_SIGNAL
+      // Add supervised error signal (i.e. WW(f/b)o * delta_y)
+      if (layers != 0) {
+        deltaf[l].noalias() += WWfo[l].transpose() * delta_y; 
+        deltab[l].noalias() += WWbo[l].transpose() * delta_y;
+      } else {
+        deltaf[l].noalias() += Wfo.transpose() * delta_y; 
+        deltab[l].noalias() += Wbo.transpose() * delta_y;
+      }
+
+    #endif
+  }
+
+  // Update gradients at input layer
+  MatrixXd dhtfdrf = MatrixXd::Zero(nh, T);
+  MatrixXd dhfdzf = MatrixXd::Zero(nh, T);
+
+  // Calculate dhf_{t+1}^{(i)} / dhf_t^{(i)}
+  MatrixXd Vzf_f2pzf = Vzf.transpose() * f2p(zf);
+  MatrixXd Vrf_f2prf = Vrf.transpose() * f2p(rf);
+  MatrixXd Vf_fphtf = Vf.transpose() * fp(htf);
+  MatrixXd Vf_hf = Vf * hf;
+  MatrixXd dhfdhtf = (MatrixXd::Ones(nh,T) - zf);
+  for (uint t = T-2; t != (uint)(-1); t--) {
+    VectorXd dhft1 = VectorXd::Zero(nh);
+    dhft1 += zf.col(t+1);
+    dhft1 += Vzf_f2pzf.col(t+1).cwiseProduct(hf.col(t) - htf.col(t+1));
+    dhft1 += dhfdhtf.col(t+1).cwiseProduct(rf.col(t+1).cwiseProduct(Vf_fphtf.col(t+1))
+                                                 + Vrf_f2prf.col(t+1).cwiseProduct(Vf_hf.col(t)).cwiseProduct(fp(htf.col(t+1))));
+    deltaf[0].col(t) += dhft1.cwiseProduct(deltaf[0].col(t+1));
+    dhfdzf.col(t+1)    = (hf.col(t) - htf.col(t+1));
+    dhtfdrf.col(t+1) = fp(htf.col(t+1)).cwiseProduct(Vf*hf.col(t));
+  }
+  MatrixXd dJdhtf = dhfdhtf.cwiseProduct(deltaf[0]); // verified by grad check
+  MatrixXd dJdzf = dhfdzf.cwiseProduct(deltaf[0]); // verified by grad check
+  MatrixXd dJdrf = dhtfdrf.cwiseProduct(dJdhtf); // verified by grad check
+
+  // Update local gradients TODO: update V matrices
+  gWf.noalias() += fp(htf).cwiseProduct(dJdhtf) * x.transpose();
+  gbhf.noalias() += fp(htf).cwiseProduct(dJdhtf) * VectorXd::Ones(T);
+
+  gWzf.noalias() += f2p(zf).cwiseProduct(dJdzf) * x.transpose();
+  gbzhf.noalias() += f2p(zf).cwiseProduct(dJdzf) * VectorXd::Ones(T);
+
+  gWrf.noalias() += f2p(rf).cwiseProduct(dJdrf) * x.transpose();
+  gbrhf.noalias() += f2p(rf).cwiseProduct(dJdrf) * VectorXd::Ones(T);
+
+  for (uint t = 1; t < T; t++) {
+    gVf.noalias()  += rf.col(t).cwiseProduct(dJdhtf.col(t)) * hf.col(t-1).transpose();
+    gVrf.noalias() += dJdrf.col(t) * hf.col(t-1).transpose();
+    gVzf.noalias() += dJdzf.col(t) * hf.col(t-1).transpose();
+  }
+
+
+  MatrixXd dhtbdrb = MatrixXd::Zero(nh, T);
+  MatrixXd dhbdzb = MatrixXd::Zero(nh, T);
+
+  // Calculate dhf_{t+1}^{(i)} / dhf_t^{(i)}
+  MatrixXd Vzb_f2pzb = Vzb.transpose() * f2p(zb);
+  MatrixXd Vrb_f2prb = Vrb.transpose() * f2p(rb);
+  MatrixXd Vb_fphtb = Vb.transpose() * fp(htb);
+  MatrixXd Vb_hb = Vb * hb;
+  MatrixXd dhbdhtb = (MatrixXd::Ones(nh,T) - zb);
+  for (uint t = 1; t < T; t++) {
+    VectorXd dhbt1 = VectorXd::Zero(nh);
+    dhbt1 += zb.col(t-1);
+    dhbt1 += Vzb_f2pzb.col(t-1).cwiseProduct(hb.col(t) - htb.col(t-1));
+    dhbt1 += dhbdhtb.col(t-1).cwiseProduct(rb.col(t-1).cwiseProduct(Vb_fphtb.col(t-1))
+                                                 + Vrb_f2prb.col(t-1).cwiseProduct(Vb_hb.col(t)).cwiseProduct(fp(htb.col(t-1))));
+    deltab[0].col(t) += dhbt1.cwiseProduct(deltab[0].col(t-1));
+    dhbdzb.col(t-1)    = (hb.col(t) - htb.col(t-1));
+    dhtbdrb.col(t-1) = fp(htb.col(t-1)).cwiseProduct(Vb*hb.col(t));
+  }
+  MatrixXd dJdhtb= dhbdhtb.cwiseProduct(deltab[0]); // verified by grad check
+  MatrixXd dJdzb = dhbdzb.cwiseProduct(deltab[0]); // verified by grad check
+  MatrixXd dJdrb = dhtbdrb.cwiseProduct(dJdhtb); // verified by grad check
+
+  // Update local gradients TODO: update V matrices
+  gWb.noalias()  += fp(htb).cwiseProduct(dJdhtb) * x.transpose();
+  gbhb.noalias() += fp(htb).cwiseProduct(dJdhtb) * VectorXd::Ones(T);
+
+  gWzb.noalias()  += f2p(zb).cwiseProduct(dJdzb) * x.transpose();
+  gbzhb.noalias() += f2p(zb).cwiseProduct(dJdzb) * VectorXd::Ones(T);
+
+  gWrb.noalias()  += f2p(rb).cwiseProduct(dJdrb) * x.transpose();
+  gbrhb.noalias() += f2p(rb).cwiseProduct(dJdrb) * VectorXd::Ones(T);
+
+  for (uint t = 0; t < T-1; t++) {
+    gVb.noalias()  += rb.col(t).cwiseProduct(dJdhtb.col(t)) * hb.col(t+1).transpose();
+    gVrb.noalias() += dJdrb.col(t) * hb.col(t+1).transpose();
+    gVzb.noalias() += dJdzb.col(t) * hb.col(t+1).transpose();
   }
 
   return cost;
 }
 
 void GRURNN::update() {
-  // double lambda = LAMBDA;
-  // double norm = 0;
+  double lambda = LAMBDA;
+  double norm = 0;
 
-  // // regularize
-  // gbo.noalias() += lambda*bo;
-  // for (uint l=layers-1; l<layers; l++) {
-  //   gWWfo[l].noalias() += (lambda)*WWfo[l];
-  //   gWWbo[l].noalias() += (lambda)*WWbo[l];
-  // }
+  // regularize
+  gbo.noalias() += lambda*bo;
+  for (uint l=layers-1; l<layers; l++) {
+    gWWfo[l].noalias() += (lambda)*WWfo[l];
+    gWWbo[l].noalias() += (lambda)*WWbo[l];
+  }
 
-  // norm += 0.1* (gWo.squaredNorm() + gbo.squaredNorm());
-  // for (uint l=0; l<layers; l++)
-  //   norm+= 0.1*(gWWfo[l].squaredNorm() + gWWbo[l].squaredNorm());
+  norm += 0.1* (gWo.squaredNorm() + gbo.squaredNorm());
+  for (uint l=0; l<layers; l++)
+    norm+= 0.1*(gWWfo[l].squaredNorm() + gWWbo[l].squaredNorm());
 
-  // gWf.noalias() += lambda*Wf;
-  // gVf.noalias() += lambda*Vf;
-  // gWb.noalias() += lambda*Wb;
-  // gVb.noalias() += lambda*Vb;
-  // gbhf.noalias() += lambda*bhf;
-  // gbhb.noalias() += lambda*bhb;
+  gWf.noalias()  += lambda*Wf;
+  gVf.noalias()  += lambda*Vf;
+  gWb.noalias()  += lambda*Wb;
+  gVb.noalias()  += lambda*Vb;
+  gbhf.noalias() += lambda*bhf;
+  gbhb.noalias() += lambda*bhb;
 
-  // norm += gWf.squaredNorm() + gVf.squaredNorm()
-  //         + gWb.squaredNorm() + gWf.squaredNorm()
-  //         + gbhf.squaredNorm() + gbhb.squaredNorm();
+  gWrf.noalias()  += lambda*Wrf;
+  gVrf.noalias()  += lambda*Vrf;
+  gWrb.noalias()  += lambda*Wrb;
+  gVrb.noalias()  += lambda*Vrb;
+  gbrhf.noalias() += lambda*brhf;
+  gbrhb.noalias() += lambda*brhb;
 
-  // for (uint l=0; l<layers; l++) {
-  //   gWWff[l].noalias() += lambda*WWff[l];
-  //   gWWfb[l].noalias() += lambda*WWfb[l];
-  //   gWWbf[l].noalias() += lambda*WWbf[l];
-  //   gWWbb[l].noalias() += lambda*WWbb[l];
-  //   gVVf[l].noalias() += lambda*VVf[l];
-  //   gVVb[l].noalias() += lambda*VVb[l];
-  //   gbbhf[l].noalias() += lambda*bbhf[l];
-  //   gbbhb[l].noalias() += lambda*bbhb[l];
+  gWzf.noalias()  += lambda*Wzf;
+  gVzf.noalias()  += lambda*Vzf;
+  gWzb.noalias()  += lambda*Wzb;
+  gVzb.noalias()  += lambda*Vzb;
+  gbzhf.noalias() += lambda*bzhf;
+  gbzhb.noalias() += lambda*bzhb;
 
-  //   norm += gWWff[l].squaredNorm() + gWWfb[l].squaredNorm()
-  //           + gWWbf[l].squaredNorm() + gWWbb[l].squaredNorm()
-  //           + gVVf[l].squaredNorm() + gVVb[l].squaredNorm()
-  //           + gbbhf[l].squaredNorm() + gbbhb[l].squaredNorm();
+  norm += gWf.squaredNorm() + gVf.squaredNorm()
+          + gWb.squaredNorm() + gVb.squaredNorm()
+          + gbhf.squaredNorm() + gbhb.squaredNorm();
 
-  // }
+  norm += gWrf.squaredNorm() + gVrf.squaredNorm()
+          + gWrb.squaredNorm() + gVrb.squaredNorm()
+          + gbrhf.squaredNorm() + gbrhb.squaredNorm();
 
-  // // update velocities
-  // vbo = 0.1*lr*gbo + mr*vbo;
-  // for (uint l=layers-1; l<layers; l++) {
-  //   vWWfo[l] = 0.1*lr*gWWfo[l] + mr*vWWfo[l];
-  //   vWWbo[l] = 0.1*lr*gWWbo[l] + mr*vWWbo[l];
-  // }
+  norm += gWzf.squaredNorm() + gVzf.squaredNorm()
+          + gWzb.squaredNorm() + gVzb.squaredNorm()
+          + gbrhf.squaredNorm() + gbrhb.squaredNorm();        
 
-  // if (NORMALIZE)
-  //   norm = (norm > 25) ? sqrt(norm/25) : 1;
-  // else
-  //   norm = 1;
+  for (uint l=0; l<layers; l++) {
+    gWWff[l].noalias() += lambda*WWff[l];
+    gWWfb[l].noalias() += lambda*WWfb[l];
+    gWWbf[l].noalias() += lambda*WWbf[l];
+    gWWbb[l].noalias() += lambda*WWbb[l];
+    gVVf[l].noalias()  += lambda*VVf[l];
+    gVVb[l].noalias()  += lambda*VVb[l];
+    gbbhf[l].noalias() += lambda*bbhf[l];
+    gbbhb[l].noalias() += lambda*bbhb[l];
 
-  // vWf  = lr*gWf/norm  + mr*vWf;
-  // vVf  = lr*gVf/norm  + mr*vVf;
-  // vWb  = lr*gWb/norm  + mr*vWb;
-  // vVb  = lr*gVb/norm  + mr*vVb;
-  // vbhf = lr*gbhf/norm + mr*vbhf;
-  // vbhb = lr*gbhb/norm + mr*vbhb;
+    gWWrff[l].noalias() += lambda*WWrff[l];
+    gWWrfb[l].noalias() += lambda*WWrfb[l];
+    gWWrbf[l].noalias() += lambda*WWrbf[l];
+    gWWrbb[l].noalias() += lambda*WWrbb[l];
+    gVVrf[l].noalias()  += lambda*VVrf[l];
+    gVVrb[l].noalias()  += lambda*VVrb[l];
+    gbbrhf[l].noalias() += lambda*bbrhf[l];
+    gbbrhb[l].noalias() += lambda*bbrhb[l];
 
-  // for (uint l=0; l<layers; l++) {
-  //   vWWff[l] = lr*gWWff[l]/norm + mr*vWWff[l];
-  //   vWWfb[l] = lr*gWWfb[l]/norm + mr*vWWfb[l];
-  //   vVVf[l]  = lr*gVVf[l]/norm  + mr*vVVf[l];
-  //   vWWbb[l] = lr*gWWbb[l]/norm + mr*vWWbb[l];
-  //   vWWbf[l] = lr*gWWbf[l]/norm + mr*vWWbf[l];
-  //   vVVb[l]  = lr*gVVb[l]/norm  + mr*vVVb[l];
-  //   vbbhf[l] = lr*gbbhf[l]/norm + mr*vbbhf[l];
-  //   vbbhb[l] = lr*gbbhb[l]/norm + mr*vbbhb[l];
-  // }
+    norm += gWWff[l].squaredNorm() + gWWfb[l].squaredNorm()
+            + gWWbf[l].squaredNorm() + gWWbb[l].squaredNorm()
+            + gVVf[l].squaredNorm() + gVVb[l].squaredNorm()
+            + gbbhf[l].squaredNorm() + gbbhb[l].squaredNorm();
 
-  // // update params
-  // bo.noalias() -= vbo;
-  // for (uint l=layers-1; l<layers; l++) {
-  //   WWfo[l].noalias() -= vWWfo[l];
-  //   WWbo[l].noalias() -= vWWbo[l];
-  // }
+   norm += gWWrff[l].squaredNorm() + gWWrfb[l].squaredNorm()
+            + gWWrbf[l].squaredNorm() + gWWrbb[l].squaredNorm()
+            + gVVrf[l].squaredNorm() + gVVrb[l].squaredNorm()
+            + gbbrhf[l].squaredNorm() + gbbrhb[l].squaredNorm();
 
-  // Wf.noalias()  -= vWf;
-  // Vf.noalias()  -= vVf;
-  // Wb.noalias()  -= vWb;
-  // Vb.noalias()  -= vVb;
-  // bhf.noalias() -= vbhf;
-  // bhb.noalias() -= vbhb;
+   norm += gWWzff[l].squaredNorm() + gWWzfb[l].squaredNorm()
+            + gWWrbf[l].squaredNorm() + gWWzbb[l].squaredNorm()
+            + gVVzf[l].squaredNorm() + gVVzb[l].squaredNorm()
+            + gbbzhf[l].squaredNorm() + gbbzhb[l].squaredNorm();
+  }
 
-  // for (uint l=0; l<layers; l++) {
-  //   WWff[l].noalias() -= vWWff[l];
-  //   WWfb[l].noalias() -= vWWfb[l];
-  //   VVf[l].noalias()  -= vVVf[l];
-  //   WWbb[l].noalias() -= vWWbb[l];
-  //   WWbf[l].noalias() -= vWWbf[l];
-  //   VVb[l].noalias()  -= vVVb[l];
-  //   bbhf[l].noalias() -= vbbhf[l];
-  //   bbhb[l].noalias() -= vbbhb[l];
-  // }
+  // update velocities
+  vbo = 0.1*lr*gbo + mr*vbo;
+  for (uint l=layers-1; l<layers; l++) {
+    vWWfo[l] = 0.1*lr*gWWfo[l] + mr*vWWfo[l];
+    vWWbo[l] = 0.1*lr*gWWbo[l] + mr*vWWbo[l];
+  }
 
-  // // reset gradients
-  // gbo.setZero();
-  // for (uint l=layers-1; l<layers; l++) {
-  //   gWWfo[l].setZero();
-  //   gWWbo[l].setZero();
-  // }
+  if (NORMALIZE)
+    norm = (norm > 25) ? sqrt(norm/25) : 1;
+  else
+    norm = 1;
 
-  // gWf.setZero();
-  // gVf.setZero();
-  // gWb.setZero();
-  // gVb.setZero();
-  // gbhf.setZero();
-  // gbhb.setZero();
+  vWf  = lr*gWf/norm  + mr*vWf;
+  vVf  = lr*gVf/norm  + mr*vVf;
+  vWb  = lr*gWb/norm  + mr*vWb;
+  vVb  = lr*gVb/norm  + mr*vVb;
+  vbhf = lr*gbhf/norm + mr*vbhf;
+  vbhb = lr*gbhb/norm + mr*vbhb;
 
-  // for (uint l=0; l<layers; l++) {
-  //   gWWff[l].setZero();
-  //   gWWfb[l].setZero();
-  //   gVVf[l].setZero();
-  //   gWWbb[l].setZero();
-  //   gWWbf[l].setZero();
-  //   gVVb[l].setZero();
-  //   gbbhf[l].setZero();
-  //   gbbhb[l].setZero();
-  // }
+  vWrf  = lr*gWrf/norm  + mr*vWrf;
+  vVrf  = lr*gVrf/norm  + mr*vVrf;
+  vWrb  = lr*gWrb/norm  + mr*vWrb;
+  vVrb  = lr*gVrb/norm  + mr*vVrb;
+  vbrhf = lr*gbrhf/norm + mr*vbrhf;
+  vbrhb = lr*gbrhb/norm + mr*vbrhb;
 
-  // lr *= 0.999;
-  // //cout << Wuo << endl;
+  vWzf  = lr*gWzf/norm  + mr*vWzf;
+  vVzf  = lr*gVzf/norm  + mr*vVzf;
+  vWzb  = lr*gWzb/norm  + mr*vWzb;
+  vVzb  = lr*gVzb/norm  + mr*vVzb;
+  vbzhf = lr*gbzhf/norm + mr*vbzhf;
+  vbzhb = lr*gbzhb/norm + mr*vbzhb;
+
+
+  for (uint l=0; l<layers; l++) {
+    vWWff[l] = lr*gWWff[l]/norm + mr*vWWff[l];
+    vWWfb[l] = lr*gWWfb[l]/norm + mr*vWWfb[l];
+    vVVf[l]  = lr*gVVf[l]/norm  + mr*vVVf[l];
+    vWWbb[l] = lr*gWWbb[l]/norm + mr*vWWbb[l];
+    vWWbf[l] = lr*gWWbf[l]/norm + mr*vWWbf[l];
+    vVVb[l]  = lr*gVVb[l]/norm  + mr*vVVb[l];
+    vbbhf[l] = lr*gbbhf[l]/norm + mr*vbbhf[l];
+    vbbhb[l] = lr*gbbhb[l]/norm + mr*vbbhb[l];
+
+    vWWrff[l] = lr*gWWrff[l]/norm + mr*vWWrff[l];
+    vWWrfb[l] = lr*gWWrfb[l]/norm + mr*vWWrfb[l];
+    vVVrf[l]  = lr*gVVrf[l]/norm  + mr*vVVrf[l];
+    vWWrbb[l] = lr*gWWrbb[l]/norm + mr*vWWrbb[l];
+    vWWrbf[l] = lr*gWWrbf[l]/norm + mr*vWWrbf[l];
+    vVVrb[l]  = lr*gVVrb[l]/norm  + mr*vVVrb[l];
+    vbbrhf[l] = lr*gbbrhf[l]/norm + mr*vbbrhf[l];
+    vbbrhb[l] = lr*gbbrhb[l]/norm + mr*vbbrhb[l];
+
+    vWWzff[l] = lr*gWWzff[l]/norm + mr*vWWzff[l];
+    vWWzfb[l] = lr*gWWzfb[l]/norm + mr*vWWzfb[l];
+    vVVzf[l]  = lr*gVVzf[l]/norm  + mr*vVVzf[l];
+    vWWzbb[l] = lr*gWWzbb[l]/norm + mr*vWWzbb[l];
+    vWWzbf[l] = lr*gWWzbf[l]/norm + mr*vWWzbf[l];
+    vVVzb[l]  = lr*gVVzb[l]/norm  + mr*vVVzb[l];
+    vbbzhf[l] = lr*gbbzhf[l]/norm + mr*vbbzhf[l];
+    vbbzhb[l] = lr*gbbzhb[l]/norm + mr*vbbzhb[l];
+  }
+
+  // update params
+  bo.noalias() -= vbo;
+  for (uint l=layers-1; l<layers; l++) {
+    WWfo[l].noalias() -= vWWfo[l];
+    WWbo[l].noalias() -= vWWbo[l];
+  }
+
+  Wf.noalias()  -= vWf;
+  Vf.noalias()  -= vVf;
+  Wb.noalias()  -= vWb;
+  Vb.noalias()  -= vVb;
+  bhf.noalias() -= vbhf;
+  bhb.noalias() -= vbhb;
+
+  Wrf.noalias()  -= vWrf;
+  Vrf.noalias()  -= vVrf;
+  Wrb.noalias()  -= vWrb;
+  Vrb.noalias()  -= vVrb;
+  brhf.noalias() -= vbrhf;
+  brhb.noalias() -= vbrhb;
+
+  Wzf.noalias()  -= vWzf;
+  Vzf.noalias()  -= vVzf;
+  Wzb.noalias()  -= vWzb;
+  Vzb.noalias()  -= vVzb;
+  bzhf.noalias() -= vbzhf;
+  bzhb.noalias() -= vbzhb;
+
+  for (uint l=0; l<layers; l++) {
+    WWff[l].noalias() -= vWWff[l];
+    WWfb[l].noalias() -= vWWfb[l];
+    VVf[l].noalias()  -= vVVf[l];
+    WWbb[l].noalias() -= vWWbb[l];
+    WWbf[l].noalias() -= vWWbf[l];
+    VVb[l].noalias()  -= vVVb[l];
+    bbhf[l].noalias() -= vbbhf[l];
+    bbhb[l].noalias() -= vbbhb[l];
+
+    WWrff[l].noalias() -= vWWrff[l];
+    WWrfb[l].noalias() -= vWWrfb[l];
+    VVrf[l].noalias()  -= vVVrf[l];
+    WWrbb[l].noalias() -= vWWrbb[l];
+    WWrbf[l].noalias() -= vWWrbf[l];
+    VVrb[l].noalias()  -= vVVrb[l];
+    bbrhf[l].noalias() -= vbbrhf[l];
+    bbrhb[l].noalias() -= vbbrhb[l];
+
+    WWzff[l].noalias() -= vWWzff[l];
+    WWzfb[l].noalias() -= vWWzfb[l];
+    VVzf[l].noalias()  -= vVVzf[l];
+    WWzbb[l].noalias() -= vWWzbb[l];
+    WWzbf[l].noalias() -= vWWzbf[l];
+    VVzb[l].noalias()  -= vVVzb[l];
+    bbzhf[l].noalias() -= vbbzhf[l];
+    bbzhb[l].noalias() -= vbbzhb[l];
+  }
+
+  // reset gradients
+  gbo.setZero();
+  for (uint l=layers-1; l<layers; l++) {
+    gWWfo[l].setZero();
+    gWWbo[l].setZero();
+  }
+
+  gWf.setZero();
+  gVf.setZero();
+  gWb.setZero();
+  gVb.setZero();
+  gbhf.setZero();
+  gbhb.setZero();
+
+  gWrf.setZero();
+  gVrf.setZero();
+  gWrb.setZero();
+  gVrb.setZero();
+  gbrhf.setZero();
+  gbrhb.setZero();
+
+  gWzf.setZero();
+  gVzf.setZero();
+  gWzb.setZero();
+  gVzb.setZero();
+  gbzhf.setZero();
+  gbzhb.setZero();
+
+  for (uint l=0; l<layers; l++) {
+    gWWff[l].setZero();
+    gWWfb[l].setZero();
+    gVVf[l].setZero();
+    gWWbb[l].setZero();
+    gWWbf[l].setZero();
+    gVVb[l].setZero();
+    gbbhf[l].setZero();
+    gbbhb[l].setZero();
+
+    gWWrff[l].setZero();
+    gWWrfb[l].setZero();
+    gVVrf[l].setZero();
+    gWWrbb[l].setZero();
+    gWWrbf[l].setZero();
+    gVVrb[l].setZero();
+    gbbrhf[l].setZero();
+    gbbrhb[l].setZero();
+
+    gWWzff[l].setZero();
+    gWWzfb[l].setZero();
+    gVVzf[l].setZero();
+    gWWzbb[l].setZero();
+    gWWzbf[l].setZero();
+    gVVzb[l].setZero();
+    gbbzhf[l].setZero();
+    gbbzhb[l].setZero();
+  }
+
+  lr *= 0.999;
+  //cout << Wuo << endl;
 }
 
 bool GRURNN::is_nan() {
@@ -890,7 +1118,7 @@ string GRURNN::model_name() {
 }
 
 void GRURNN::grad_check(vector<string> &sentence, vector<string> &labels) {
-  clear_gradients();
+  //clear_gradients();
   backward(sentence, labels);
   // for (uint l = 0; l < layers; l++) {
   //   cout << "Grad checking WWzff[" << l << "]" << endl;
@@ -956,80 +1184,6 @@ MatrixXd GRURNN::numerical_gradient(MatrixXd &parameter, vector<string> &sentenc
   }
 
   return grad;
-}
-
-void GRURNN::clear_gradients() {
-    // Initialize gradients to zero
-  gWf = MatrixXd::Zero(nh,nx);
-  gVf = MatrixXd::Zero(nh,nh);
-  gbhf = VectorXd::Zero(nh);
-
-  gWb = MatrixXd::Zero(nh,nx);
-  gVb = MatrixXd::Zero(nh,nh);
-  gbhb = VectorXd::Zero(nh);
-
-  // Reset gate gradients for input layer
-  gWrf = MatrixXd::Zero(nh,nx);
-  gVrf = MatrixXd::Zero(nh,nh);
-  gbrhf = VectorXd::Zero(nh);
-
-  gWrb = MatrixXd::Zero(nh,nx);
-  gVrb = MatrixXd::Zero(nh,nh);
-  gbrhb = VectorXd::Zero(nh);
-
-  // Update gate gradients for input layer
-  gWzf = MatrixXd::Zero(nh,nx);
-  gVzf = MatrixXd::Zero(nh,nh);
-  gbzhf = VectorXd::Zero(nh);
-
-  gWzb = MatrixXd::Zero(nh,nx);
-  gVzb = MatrixXd::Zero(nh,nh);
-  gbzhb = VectorXd::Zero(nh);
-
-  // Gradients for hidden layer
-  for (uint l=0; l<layers; l++) {
-    // Output gate gradients
-    gWWff[l] = MatrixXd::Zero(nh,nh);
-    gWWfb[l] = MatrixXd::Zero(nh,nh);
-    gVVf[l] = MatrixXd::Zero(nh,nh);
-    gbbhf[l] = VectorXd::Zero(nh);
-
-    gWWbb[l] = MatrixXd::Zero(nh,nh);
-    gWWbf[l] = MatrixXd::Zero(nh,nh);
-    gVVb[l] = MatrixXd::Zero(nh,nh);
-    gbbhb[l] = VectorXd::Zero(nh);
-
-    // Reset gate gradients
-    gWWrff[l] = MatrixXd::Zero(nh,nh);
-    gWWrfb[l] = MatrixXd::Zero(nh,nh);
-    gVVrf[l] = MatrixXd::Zero(nh,nh);
-    gbbrhf[l] = VectorXd::Zero(nh);
-
-    gWWrbb[l] = MatrixXd::Zero(nh,nh);
-    gWWrbf[l] = MatrixXd::Zero(nh,nh);
-    gVVrb[l] = MatrixXd::Zero(nh,nh);
-    gbbrhb[l] = VectorXd::Zero(nh);
-
-    // Update gate gradients
-    gWWzff[l] = MatrixXd::Zero(nh,nh);
-    gWWzfb[l] = MatrixXd::Zero(nh,nh);
-    gVVzf[l] = MatrixXd::Zero(nh,nh);
-    gbbzhf[l] = VectorXd::Zero(nh);
-
-    gWWzbb[l] = MatrixXd::Zero(nh,nh);
-    gWWzbf[l] = MatrixXd::Zero(nh,nh);
-    gVVzb[l] = MatrixXd::Zero(nh,nh);
-    gbbzhb[l] = VectorXd::Zero(nh);
-  }
-
-  gWfo = MatrixXd::Zero(ny,nh);
-  gWbo = MatrixXd::Zero(ny,nh);
-  for (uint l=0; l<layers; l++) {
-    gWWfo[l] = MatrixXd::Zero(ny,nh);
-    gWWbo[l] = MatrixXd::Zero(ny,nh);
-  }
-  gWo = MatrixXd::Zero(ny,nx);
-  gbo = VectorXd::Zero(ny);
 }
 
 int main(int argc, char **argv) {
@@ -1129,11 +1283,11 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  GRURNN brnn(25,4,ny,LT, lr, mr, null_class_weight, dropout_prob);
-  for (int i = 0; i < 10; i++)
-    brnn.grad_check(trainX[i], trainL[i]);
-  //cout << brnn.backward(trainX[1], trainL[1]) << endl;
-  //auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
+  GRURNN brnn(25,25,ny,LT, lr, mr, null_class_weight, dropout_prob);
+  // for (int i = 0; i < 10; i++)
+  //   brnn.grad_check(trainX[i], trainL[i]);
+  // //cout << brnn.backward(trainX[1], trainL[1]) << endl;
+  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
   
   return 0;
 }
