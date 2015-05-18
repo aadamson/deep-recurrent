@@ -11,4 +11,4 @@ rm eigen.tar.gz
 # compile & run
 cmake .
 make
-./drnt --data data/agent.txt --lr 0.001
+./DeepRecurrent --data data/agent.txt --lr 0.001

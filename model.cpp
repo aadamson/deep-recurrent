@@ -19,6 +19,7 @@ public:
   virtual MatrixXd forward(const vector<string> &sent) = 0;
   virtual double backward(const vector<string> &sent, 
                           const vector<string> &labels) = 0;
+  virtual void grad_check(vector<string> &sentence, vector<string> &labels) = 0;
   virtual bool is_nan() = 0;
   virtual void update() = 0;
   virtual string model_name() = 0;
@@ -214,7 +215,12 @@ Model::train(vector<vector<string> > &sents,
       if ((i+1) % mini_batch == 0 || i == sents.size()-1)
         update();
     }
-    if (epoch % 10 == 0) {
+    if (epoch % 4 == 0) {
+      // for (int i = 0; i < 3; i++) {
+      //   int idx = rand() % sents.size();
+      //   grad_check(sents[idx], labels[idx]);
+      // }
+
       Matrix<double, 3, 2> resVal, resTest, resVal2, resTest2;
       cout << "Epoch " << epoch << endl;
 

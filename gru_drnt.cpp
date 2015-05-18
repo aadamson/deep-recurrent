@@ -19,9 +19,9 @@
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
-#define ERROR_SIGNAL
+//#define ERROR_SIGNAL
 #define NORMALIZE false // keeping this false throughout my own experiments
-#define layers 3 // number of EXTRA (not all) hidden layers
+#define layers 1 // number of EXTRA (not all) hidden layers
 
 using namespace Eigen;
 using namespace std;
@@ -161,8 +161,8 @@ GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lr, float mr, f
   f = &relu;
   fp = &relup;
 
-  f2 = &sigmoid;
-  f2p = &sigmoidp;
+  f2 = &relu;
+  f2p = &relup;
 
   // init randomly
   Wf = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
@@ -552,10 +552,10 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
   MatrixXd delta_y = smaxentp(y_hat, y);
   // We dampen the error propagated by mis-classifying null-class tokens so that
   // the model doesn't simply learn the prior
-  for (uint i = 0; i < T; i++) {
-    if (labels[i] == "0")
-      delta_y.col(i) *= null_class_weight;
-  }
+  // for (uint i = 0; i < T; i++) {
+  //   if (labels[i] == "0")
+  //     delta_y.col(i) *= null_class_weight;
+  // }
 
   // Calculate output layer gradients
   gWWfo[layers-1].noalias() += delta_y * hhf[layers-1].transpose();
@@ -601,32 +601,35 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
     MatrixXd dJdrrf = dhhtfdrrf.cwiseProduct(dJdhhtf); // verified by grad check
 
     // Update local gradients TODO: update V matrices
-    gWWff[l].noalias() += fp(hhtf[l]).cwiseProduct(dJdhhtf) * cur_hf.transpose();
-    gWWfb[l].noalias() += fp(hhtf[l]).cwiseProduct(dJdhhtf) * cur_hb.transpose();
-    gbbhf[l].noalias() += fp(hhtf[l]).cwiseProduct(dJdhhtf) * VectorXd::Ones(T);
+    MatrixXd dJdAhhtf = fp(hhtf[l]).cwiseProduct(dJdhhtf);
+    gWWff[l].noalias() += dJdAhhtf * cur_hf.transpose();
+    gWWfb[l].noalias() += dJdAhhtf * cur_hb.transpose();
+    gbbhf[l].noalias() += dJdAhhtf * VectorXd::Ones(T);
 
-    gWWzff[l].noalias() += f2p(zzf[l]).cwiseProduct(dJdzzf) * cur_hf.transpose();
-    gWWzfb[l].noalias() += f2p(zzf[l]).cwiseProduct(dJdzzf) * cur_hb.transpose();
-    gbbzhf[l].noalias() += f2p(zzf[l]).cwiseProduct(dJdzzf) * VectorXd::Ones(T);
+    MatrixXd dJdAzzf = f2p(zzf[l]).cwiseProduct(dJdzzf);
+    gWWzff[l].noalias() += dJdAzzf * cur_hf.transpose();
+    gWWzfb[l].noalias() += dJdAzzf * cur_hb.transpose();
+    gbbzhf[l].noalias() += dJdAzzf * VectorXd::Ones(T);
 
-    gWWrff[l].noalias() += f2p(rrf[l]).cwiseProduct(dJdrrf) * cur_hf.transpose();
-    gWWrfb[l].noalias() += f2p(rrf[l]).cwiseProduct(dJdrrf) * cur_hb.transpose();
-    gbbrhf[l].noalias() += f2p(rrf[l]).cwiseProduct(dJdrrf) * VectorXd::Ones(T);
+    MatrixXd dJdArrf = f2p(rrf[l]).cwiseProduct(dJdrrf);
+    gWWrff[l].noalias() += dJdArrf * cur_hf.transpose();
+    gWWrfb[l].noalias() += dJdArrf * cur_hb.transpose();
+    gbbrhf[l].noalias() += dJdArrf * VectorXd::Ones(T);
 
     for (uint t = 1; t < T; t++) {
-      gVVf[l].noalias() += rrf[l].col(t).cwiseProduct(dJdhhtf.col(t)) * hhf[l].col(t-1).transpose();
-      gVVrf[l].noalias() += dJdrrf.col(t) * hhf[l].col(t-1).transpose();
-      gVVzf[l].noalias() += dJdzzf.col(t) * hhf[l].col(t-1).transpose();
+      gVVf[l].noalias()  += dJdAhhtf.col(t)  * rrf[l].col(t).cwiseProduct(hhf[l].col(t-1)).transpose();
+      gVVrf[l].noalias() += dJdArrf.col(t)   * hhf[l].col(t-1).transpose();
+      gVVzf[l].noalias() += dJdAzzf.col(t)   * hhf[l].col(t-1).transpose();
     }
 
     // Propagate error downwards
-    deltaf[l].noalias() += WWzff[l].transpose() * dJdzzf;
-    deltaf[l].noalias() += WWrff[l].transpose() * dJdrrf;
-    deltaf[l].noalias() += WWff[l].transpose() * dJdhhtf;
+    deltaf[l].noalias() += WWzff[l].transpose() * dJdAzzf;
+    deltaf[l].noalias() += WWrff[l].transpose() * dJdArrf;
+    deltaf[l].noalias() += WWff[l].transpose() * dJdAhhtf;
 
-    deltab[l].noalias() += WWzfb[l].transpose() * dJdzzf;
-    deltab[l].noalias() += WWrfb[l].transpose() * dJdrrf;
-    deltab[l].noalias() += WWfb[l].transpose() * dJdhhtf;
+    deltab[l].noalias() += WWzfb[l].transpose() * dJdAzzf;
+    deltab[l].noalias() += WWrfb[l].transpose() * dJdArrf;
+    deltab[l].noalias() += WWfb[l].transpose() * dJdAhhtf;
 
     MatrixXd dhhtbdrrb = MatrixXd::Zero(nh, T);
     MatrixXd dhhbdzzb = MatrixXd::Zero(nh, T);
@@ -1120,31 +1123,74 @@ string GRURNN::model_name() {
 void GRURNN::grad_check(vector<string> &sentence, vector<string> &labels) {
   //clear_gradients();
   backward(sentence, labels);
-  // for (uint l = 0; l < layers; l++) {
-  //   cout << "Grad checking WWzff[" << l << "]" << endl;
-  //   cout << "Analytic gradient:" << endl;
-  //   cout << gWWzff[l] << endl;
-  //   cout << "Numerical gradient:" << endl;
-  //   cout << numerical_gradient(WWzff[l], sentence, labels) << endl;
-  //   cout << endl;
-  // }
+  double threshold = 1e-3;
 
-  // for (uint l = 0; l < layers; l++) {
-  //   cout << "Grad checking WWff[" << l << "]" << endl;
-  //   cout << "Analytic gradient:" << endl;
-  //   cout << gWWff[l] << endl;
-  //   cout << "Numerical gradient:" << endl;
-  //   cout << numerical_gradient(WWff[l], sentence, labels) << endl;
-  //   cout << endl;
-  // }
+  MatrixXd numerical_grad1 = numerical_gradient(Vf, sentence, labels);
+    double error = (gVf - numerical_grad1).array().abs().sum()/(numerical_grad1.rows() * numerical_grad1.cols());
+    if (threshold > error) {
+    cout << "Grad check passed for Vf" << endl; 
+  } else {
+    cout << "Grad check failed for Vf with error " << error << endl;
+  }
 
   for (uint l = 0; l < layers; l++) {
-    cout << "Grad checking VVf[" << l << "]" << endl;
-    cout << "Analytic gradient:" << endl;
-    cout << gVVf[l] << endl;
-    cout << "Numerical gradient:" << endl;
-    cout << numerical_gradient(VVf[l], sentence, labels) << endl;
-    cout << endl;
+    MatrixXd numerical_grad = numerical_gradient(WWrff[l], sentence, labels);
+    double error = (gWWrff[l] - numerical_grad).array().abs().sum()/(numerical_grad.rows() * numerical_grad.cols());
+    if (threshold > error) {
+      cout << "Grad check passed for WWrff[" << l << "]" << endl; 
+    } else {
+      cout << "Grad check failed for WWrff[" << l << "] with error " << error << endl;
+    }
+  }
+
+  for (uint l = 0; l < layers; l++) {
+    MatrixXd numerical_grad = numerical_gradient(WWzff[l], sentence, labels);
+    double error = (gWWzff[l] - numerical_grad).array().abs().sum()/(numerical_grad.rows() * numerical_grad.cols());
+    if (threshold > error) {
+      cout << "Grad check passed for WWzff[" << l << "]" << endl; 
+    } else {
+      cout << "Grad check failed for WWzff[" << l << "] with error " << error << endl;
+    }
+  }
+
+  for (uint l = 0; l < layers; l++) {
+    MatrixXd numerical_grad = numerical_gradient(WWff[l], sentence, labels);
+    double error = (gWWff[l] - numerical_grad).array().abs().sum()/(numerical_grad.rows() * numerical_grad.cols());
+    if (threshold > error) {
+      cout << "Grad check passed for WWff[" << l << "]" << endl; 
+    } else {
+      cout << "Grad check failed for WWff[" << l << "] with error " << error << endl;
+    }
+  }
+
+  for (uint l = 0; l < layers; l++) {
+    MatrixXd numerical_grad = numerical_gradient(VVf[l], sentence, labels);
+    double error = (gVVf[l] - numerical_grad).array().abs().sum()/(numerical_grad.rows() * numerical_grad.cols());
+    if (threshold > error) {
+      cout << "Grad check passed for VVf[" << l << "]" << endl; 
+    } else {
+      cout << "Grad check failed for VVf[" << l << "] with error " << error << endl;
+    }
+  }
+
+  for (uint l = 0; l < layers; l++) {
+    MatrixXd numerical_grad = numerical_gradient(VVzf[l], sentence, labels);
+    double error = (gVVzf[l] - numerical_grad).array().abs().sum()/(numerical_grad.rows() * numerical_grad.cols());
+    if (threshold > error) {
+      cout << "Grad check passed for VVzf[" << l << "]" << endl; 
+    } else {
+      cout << "Grad check failed for VVzf[" << l << "] with error " << error << endl;
+    }
+  }
+
+  for (uint l = 0; l < layers; l++) {
+    MatrixXd numerical_grad = numerical_gradient(VVrf[l], sentence, labels);
+    double error = (gVVrf[l] - numerical_grad).array().abs().sum()/(numerical_grad.rows() * numerical_grad.cols());
+    if (threshold > error) {
+      cout << "Grad check passed for VVrf[" << l << "]" << endl; 
+    } else {
+      cout << "Grad check failed for VVrf[" << l << "] with error " << error << endl;
+    }
   }
 
   // for (uint l = 0; l < layers; l++) {
@@ -1167,7 +1213,7 @@ void GRURNN::grad_check(vector<string> &sentence, vector<string> &labels) {
 }
 
 MatrixXd GRURNN::numerical_gradient(MatrixXd &parameter, vector<string> &sentence, vector<string> &labels) {
-  double h = 1e-5;
+  double h = 1e-6;
   MatrixXd grad = MatrixXd::Zero(parameter.rows(), parameter.cols());
   for (int i = 0; i < parameter.rows(); i++) {
     for (int j = 0; j < parameter.cols(); j++) {
