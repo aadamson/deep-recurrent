@@ -19,7 +19,8 @@ public:
   virtual MatrixXd forward(const vector<string> &sent) = 0;
   virtual double backward(const vector<string> &sent, 
                           const vector<string> &labels) = 0;
-  virtual void grad_check(vector<string> &sentence, vector<string> &labels) = 0;
+  virtual void grad_check(vector<string> &sentence, vector<string> &labels) {
+  };
   virtual bool is_nan() = 0;
   virtual void update() = 0;
   virtual string model_name() = 0;
