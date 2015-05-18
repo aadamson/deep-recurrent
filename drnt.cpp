@@ -19,7 +19,7 @@
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
-#define ERROR_SIGNAL
+//#define ERROR_SIGNAL
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define layers 3 // number of EXTRA (not all) hidden layers
 
@@ -567,7 +567,7 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 string RNN::model_name() {
   ostringstream strS;
   strS << "drnt_" << layers << "_" << nhf << "_"
-  << nhb << "_" << DROP << "_"
+  << nhb << "_" << dropout_prob << "_"
   << lr << "_" << LAMBDA << "_" << mr ;
   string fname = strS.str();
   return fname;

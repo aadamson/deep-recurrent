@@ -59,6 +59,14 @@ MatrixXd relup(const MatrixXd &x) {
   return (x.array() > 0).cast<double>();
 }
 
+MatrixXd sigmoid(const MatrixXd &x) {
+  return 1.0 / (1.0 + (-x).array().exp());
+}
+
+MatrixXd sigmoidp(const MatrixXd &x) { 
+  return x.array() * (1.0 - x.array());
+}
+
 MatrixXd clip(const MatrixXd &x) {
   return x.array().min(1e10).max(-1e10);
 }
