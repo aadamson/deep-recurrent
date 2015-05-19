@@ -67,6 +67,25 @@ MatrixXd sigmoidp(const MatrixXd &x) {
   return x.array() * (1.0 - x.array());
 }
 
+MatrixXd fast_sigmoid(const MatrixXd &x) {
+  return x.array() / (1.0 + x.array().abs());
+}
+
+MatrixXd fast_sigmoidp(const MatrixXd &x) { 
+  return 1.0 / (1.0 + x.array().abs()).pow(2);
+}
+
+MatrixXd _tanh(const MatrixXd &x) {
+  MatrixXd e_x = x.array().exp();
+  MatrixXd e_negx = (-x).array().exp();
+  return (e_x - e_negx).cwiseQuotient(e_x + e_negx);
+}
+
+MatrixXd _tanhp(const MatrixXd &x) { 
+  return 1.0 - x.array().pow(2);
+}
+
+
 MatrixXd clip(const MatrixXd &x) {
   return x.array().min(1e10).max(-1e10);
 }

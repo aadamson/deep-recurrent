@@ -19,7 +19,7 @@
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
-//#define ERROR_SIGNAL
+#define ERROR_SIGNAL
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define layers 3 // number of EXTRA (not all) hidden layers
 
@@ -41,6 +41,7 @@ public:
   MatrixXd forward(const vector<string> &sent);
   double backward(const vector<string> &sent, 
                   const vector<string> &labels);
+  double cost(const vector<string> &sent, const vector<string> &labels);
   void update();
   bool is_nan();
   string model_name();
@@ -186,6 +187,27 @@ RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float 
   }
   vWo = MatrixXd::Zero(ny,nx);
   vbo = VectorXd::Zero(ny);
+}
+
+double RNN::cost(const vector<string> &sent, const vector<string> &labels) {
+  double cost = 0.0;
+  uint T = sent.size();
+
+  // Build the input x from the embeddings
+  MatrixXd x = MatrixXd(nx, T);
+  for (uint i = 0; i < T; i++) 
+    x.col(i) = (*LT)[sent[i]];
+
+  MatrixXd y_hat = forward(sent);
+  // Create one-hot vectors
+  MatrixXd y = MatrixXd::Zero(ny, T);
+  for (uint i=0; i<T; i++) {
+    int label_idx = stoi(labels[i]);
+    y(label_idx, i) = 1;
+    cost += log(y_hat(label_idx, i));
+  }
+
+  return -cost;
 }
 
 MatrixXd RNN::forward(const vector<string> &sent) {

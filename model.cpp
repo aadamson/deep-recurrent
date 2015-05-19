@@ -19,6 +19,9 @@ public:
   virtual MatrixXd forward(const vector<string> &sent) = 0;
   virtual double backward(const vector<string> &sent, 
                           const vector<string> &labels) = 0;
+  virtual double cost(const vector<string> &sent, const vector<string> &labels) = 0;
+  MatrixXd numerical_gradient(MatrixXd &parameter, vector<string> &sentence, vector<string> &labels);
+  VectorXd numerical_gradient_vector(VectorXd &parameter, vector<string> &sentence, vector<string> &labels);
   virtual void grad_check(vector<string> &sentence, vector<string> &labels) {
   };
   virtual bool is_nan() = 0;
@@ -193,6 +196,44 @@ Matrix<double, 3, 2> Model::testSequential(vector<vector<string> > &sents,
   return results;
 }
 
+VectorXd Model::numerical_gradient_vector(VectorXd &parameter, vector<string> &sentence, vector<string> &labels) {
+  double h = 1e-8;
+  VectorXd grad = VectorXd::Zero(parameter.size());
+  for (int i = 0; i < parameter.size(); i++) {
+      double old_value = parameter(i);
+
+      parameter(i) = old_value + h;
+      double right_cost = cost(sentence, labels);
+      parameter(i) = old_value - h;
+      double left_cost = cost(sentence, labels);
+      grad(i) = (right_cost - left_cost) / (2*h);
+
+      parameter(i) = old_value;
+  }
+
+  return grad;
+}
+
+MatrixXd Model::numerical_gradient(MatrixXd &parameter, vector<string> &sentence, vector<string> &labels) {
+  double h = 1e-8;
+  MatrixXd grad = MatrixXd::Zero(parameter.rows(), parameter.cols());
+  for (int i = 0; i < parameter.rows(); i++) {
+    for (int j = 0; j < parameter.cols(); j++) {
+      double old_value = parameter(i, j);
+
+      parameter(i, j) = old_value + h;
+      double right_cost = cost(sentence, labels);
+      parameter(i, j) = old_value - h;
+      double left_cost = cost(sentence, labels);
+      grad(i, j) = (right_cost - left_cost) / (2*h);
+
+      parameter(i, j) = old_value;
+    }
+  }
+
+  return grad;
+}
+
 Matrix<double, 6, 2>
 Model::train(vector<vector<string> > &sents,
              vector<vector<string> > &labels,
@@ -217,10 +258,12 @@ Model::train(vector<vector<string> > &sents,
         update();
     }
     if (epoch % 4 == 0) {
-      // for (int i = 0; i < 3; i++) {
-      //   int idx = rand() % sents.size();
-      //   grad_check(sents[idx], labels[idx]);
-      // }
+#ifdef GRADCHECK
+      for (int i = 0; i < 3; i++) {
+        int idx = rand() % sents.size();
+        grad_check(sents[idx], labels[idx]);
+      }
+#endif
 
       Matrix<double, 3, 2> resVal, resTest, resVal2, resTest2;
       cout << "Epoch " << epoch << endl;
