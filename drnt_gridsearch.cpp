@@ -17,7 +17,7 @@
 #include "Eigen/Dense"
 #include "utils.cpp"
 #include "data_utils/utils.cpp"
-#include "gru_drnt.cpp"
+#include "drnt.cpp"
 
 int main(int argc, char **argv) {
   cout << setprecision(3);
@@ -140,18 +140,16 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  //GRURNN *best_model = NULL;
 
   for (; lr > 1e-6; lr /= 5.0) {
     for (; dropout_prob <= 0.2; dropout_prob += 0.1) {
       for (; null_class_weight >= 0.3; null_class_weight -= 0.1) {
         cout << "Trying " << lr << " " << dropout_prob << " " << null_class_weight << endl;
-        GRURNN brnn(nx, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
+        RNN brnn(nx, 20, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
         auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80);
         if (results(2,0) > best(2,0)) {
           best = results;
           cout << "--NEW BEST--" << endl;
-          //best_model = brnn;
         }
       }
     }

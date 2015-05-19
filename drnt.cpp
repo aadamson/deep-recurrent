@@ -34,7 +34,7 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p);
 
 class RNN : public Model {
 public:
-  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight, float dropout = 0.0);
+  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout = 0.0);
 
   void save(string fname);
   void load(string fname);
@@ -89,11 +89,11 @@ private:
   uint nx, nhf, nhb, ny;
   uint epoch;
 
-  float lr, mr, null_class_weight, dropout_prob;
+  float lambda, lr, mr, null_class_weight, dropout_prob;
 };
 
-RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lr, float mr, float null_class_weight, float dropout) :
-  LT(&LT), nx(nx), nhf(nhf), nhb(nhb), ny(ny), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout)
+RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout) :
+  LT(&LT), nx(nx), nhf(nhf), nhb(nhb), ny(ny), lambda(lambda), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout)
 {
   f = &relu;
   fp = &relup;
@@ -593,136 +593,5 @@ string RNN::model_name() {
   << lr << "_" << LAMBDA << "_" << mr ;
   string fname = strS.str();
   return fname;
-}
-
-int main(int argc, char **argv) {
-  cout << setprecision(6);
-
-  // Set default arguments
-  // Set default arguments
-  int seed     = 135;
-  float lambda = 1e-6;
-  float lr     = 0.05;
-  float mr     = 0.7;
-  float null_class_weight = 0.5;
-  float dropout_prob = 0.0;
-  string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
-  int embeddings_tokens = 268810;
-  int nx = 25;
-  string data  = "";
-
-  int c;
-
-  while (1) {
-    static struct option long_options[] =
-      {
-        {"seed",   required_argument, 0, 'a'},
-        {"lr",     required_argument, 0, 'b'},
-        {"mr",     required_argument, 0, 'c'},
-        {"weight", required_argument, 0, 'd'},
-        {"data",   required_argument, 0, 'f'},
-        {"dr",     required_argument, 0, 'g'},
-        {"lambda", required_argument, 0, 'h'},
-        {"emb",    required_argument, 0, 'i'},
-        {"nt",     required_argument, 0, 'j'},
-        {"nx",     required_argument, 0, 'k'},          
-      };
-    /* getopt_long stores the option index here. */
-    int option_index = 0;
-
-    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:",
-                     long_options, &option_index);    
-
-    /* Detect the end of the options. */
-    if (c == -1)
-      break;
-
-    switch (c) {
-      case 0:
-        /* If this option set a flag, do nothing else now. */
-        if (long_options[option_index].flag != 0)
-          break;
-        printf ("option %s", long_options[option_index].name);
-        if (optarg)
-          printf (" with arg %s", optarg);
-        printf ("\n");
-        break;
-
-      case 'a':
-        seed = stoi(optarg);
-        break;
-
-      case 'b':
-        lr = stof(optarg);
-        break;
-
-      case 'c':
-        mr = stof(optarg);
-        break;
-
-      case 'd':
-        null_class_weight = stof(optarg);
-        break;
-
-      case 'f':
-        data = string(optarg);
-        break;
-
-      case 'g':
-        dropout_prob = stof(optarg);
-        break;
-
-      case 'h':
-        lambda = stof(optarg);
-        break;
-
-      case 'i':
-        embeddings_file = optarg;
-        break;
-
-      case 'j':
-        embeddings_tokens = stoi(optarg);
-        break;
-
-      case 'k':
-        nx = stoi(optarg);
-        break;
-
-      case '?':
-        /* getopt_long already printed an error message. */
-        break;
-
-      default:
-        abort ();
-    }
-  }
-
-  srand(seed);
-
-  LookupTable LT;
-  // i used mikolov's word2vec (300d) for my experiments, not CW
-  LT.load(embeddings_file, embeddings_tokens, nx, false);
-  vector<vector<string> > X;
-  vector<vector<string> > T;
-  int ny = DataUtils::read_sentences(X, T, data);
-
-  vector<vector<string> > trainX, validX, testX;
-  vector<vector<string> > trainL, validL, testL;
-
-  DataUtils::generate_splits(X, T, trainX, trainL, validX, validL, testX, testL, 0.8, 0.1, 0.1);
-
-  cout << "Total dataset size: " << X.size() << endl;
-  cout << "Training set size: " << trainX.size() << endl;
-  cout << "Validation set size: " << validX.size() << endl;
-  cout << "Test set size: " << testX.size() << endl;
-
-  Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  RNN brnn(nx,25,25,ny,LT, lr, mr, null_class_weight, dropout_prob);
-
-  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
-  
-  cout << results << endl;
-
-  return 0;
 }
 
