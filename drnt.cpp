@@ -599,11 +599,16 @@ int main(int argc, char **argv) {
   cout << setprecision(6);
 
   // Set default arguments
+  // Set default arguments
   int seed     = 135;
+  float lambda = 1e-6;
   float lr     = 0.05;
   float mr     = 0.7;
   float null_class_weight = 0.5;
   float dropout_prob = 0.0;
+  string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
+  int embeddings_tokens = 268810;
+  int nx = 25;
   string data  = "";
 
   int c;
@@ -616,12 +621,16 @@ int main(int argc, char **argv) {
         {"mr",     required_argument, 0, 'c'},
         {"weight", required_argument, 0, 'd'},
         {"data",   required_argument, 0, 'f'},
-        {"dr",     required_argument, 0, 'g'},       
+        {"dr",     required_argument, 0, 'g'},
+        {"lambda", required_argument, 0, 'h'},
+        {"emb",    required_argument, 0, 'i'},
+        {"nt",     required_argument, 0, 'j'},
+        {"nx",     required_argument, 0, 'k'},          
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:b:c:d:f:g:",
+    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -663,6 +672,22 @@ int main(int argc, char **argv) {
         dropout_prob = stof(optarg);
         break;
 
+      case 'h':
+        lambda = stof(optarg);
+        break;
+
+      case 'i':
+        embeddings_file = optarg;
+        break;
+
+      case 'j':
+        embeddings_tokens = stoi(optarg);
+        break;
+
+      case 'k':
+        nx = stoi(optarg);
+        break;
+
       case '?':
         /* getopt_long already printed an error message. */
         break;
@@ -676,7 +701,7 @@ int main(int argc, char **argv) {
 
   LookupTable LT;
   // i used mikolov's word2vec (300d) for my experiments, not CW
-  LT.load("embeddings-original.EMBEDDING_SIZE=25.txt", 268810, 25, false);
+  LT.load(embeddings_file, embeddings_tokens, nx, false);
   vector<vector<string> > X;
   vector<vector<string> > T;
   int ny = DataUtils::read_sentences(X, T, data);
@@ -692,7 +717,7 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  RNN brnn(25,25,25,ny,LT, lr, mr, null_class_weight, dropout_prob);
+  RNN brnn(nx,25,25,ny,LT, lr, mr, null_class_weight, dropout_prob);
 
   auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 200, 80);
   

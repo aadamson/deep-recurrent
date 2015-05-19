@@ -158,8 +158,8 @@ GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float l
   f = &_tanh;
   fp = &_tanhp;
 
-  f2 = &relu;
-  f2p = &relup;
+  f2 = &sigmoid;
+  f2p = &sigmoidp;
 
   // init randomly
   Wf = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
@@ -579,7 +579,7 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
       if (t == 0) {
         dhhfdzzf.col(t) += -hhtf[l].col(t);
       }
-      dhtfdrrf.col(t+1) += fp(hhtf[l].col(t+1)).cwiseProduct(VVf[l]*hhf[l].col(t));
+      dhtfdrrf.col(t+1)  += fp(hhtf[l].col(t+1)).cwiseProduct(VVf[l]*hhf[l].col(t));
       dhhfdzzf.col(t+1)  += (hhf[l].col(t) - hhtf[l].col(t+1));
       deltaf[l+1].col(t) += (dhhfdhtf.col(t+1).cwiseProduct(dhtfdrrf.col(t+1)).cwiseProduct(drrfdhhf.col(t+1))).cwiseProduct(deltaf[l+1].col(t+1));
       deltaf[l+1].col(t) += (dhhfdzzf.col(t+1).cwiseProduct(dzzfdhhf.col(t+1))).cwiseProduct(deltaf[l+1].col(t+1));
@@ -1351,6 +1351,9 @@ int main(int argc, char **argv) {
   float mr     = 0.7;
   float null_class_weight = 0.5;
   float dropout_prob = 0.0;
+  string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
+  int embeddings_tokens = 268810;
+  int nx = 25;
   string data  = "";
 
   int c;
@@ -1364,12 +1367,15 @@ int main(int argc, char **argv) {
         {"weight", required_argument, 0, 'd'},
         {"data",   required_argument, 0, 'f'},
         {"dr",     required_argument, 0, 'g'},
-        {"lambda", required_argument, 0, 'h'},       
+        {"lambda", required_argument, 0, 'h'},
+        {"emb",    required_argument, 0, 'i'},
+        {"nt",     required_argument, 0, 'j'},
+        {"nx",     required_argument, 0, 'k'},          
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:",
+    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -1415,6 +1421,18 @@ int main(int argc, char **argv) {
         lambda = stof(optarg);
         break;
 
+      case 'i':
+        embeddings_file = optarg;
+        break;
+
+      case 'j':
+        embeddings_tokens = stoi(optarg);
+        break;
+
+      case 'k':
+        nx = stoi(optarg);
+        break;
+
       case '?':
         /* getopt_long already printed an error message. */
         break;
@@ -1428,7 +1446,7 @@ int main(int argc, char **argv) {
 
   LookupTable LT;
   // i used mikolov's word2vec (300d) for my experiments, not CW
-  LT.load("embeddings-original.EMBEDDING_SIZE=25.txt", 268810, 25, false);
+  LT.load(embeddings_file, embeddings_tokens, nx, false);
   vector<vector<string> > X;
   vector<vector<string> > T;
   int ny = DataUtils::read_sentences(X, T, data);
@@ -1444,7 +1462,7 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  GRURNN brnn(25, 25, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
+  GRURNN brnn(nx, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
   // for (int i = 0; i < 10; i++)
   //   brnn.grad_check(trainX[i], trainL[i]);
   // //cout << brnn.backward(trainX[1], trainL[1]) << endl;

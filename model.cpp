@@ -288,7 +288,7 @@ Model::train(vector<vector<string> > &sents,
       }
 
       if (is_nan()) {
-        cout << "Some parameter has become overflowed :(" << endl;
+        cout << "Some parameter has become overflowed :(\a" << endl;
         break;                                                
       }
     }
