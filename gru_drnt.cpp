@@ -21,7 +21,7 @@
 
 #define ERROR_SIGNAL
 #define NORMALIZE false // keeping this false throughout my own experiments
-#define layers 3 // number of EXTRA (not all) hidden layers
+#define layers 2 // number of EXTRA (not all) hidden layers
 
 using namespace Eigen;
 using namespace std;
@@ -37,6 +37,7 @@ public:
   MatrixXd forward(const vector<string> &sent);
   double backward(const vector<string> &sent, 
                   const vector<string> &labels);
+  double get_norm();
   void update();
   bool is_nan();
   string model_name();
@@ -157,8 +158,8 @@ GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float l
   f = &_tanh;
   fp = &_tanhp;
 
-  f2 = &fast_sigmoid;
-  f2p = &fast_sigmoidp;
+  f2 = &relu;
+  f2p = &relup;
 
   // init randomly
   Wf = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
@@ -547,8 +548,8 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
   }
 
   // Calculate output layer gradients
-  gWWfo[layers-1].noalias() += delta_y * hhf[layers-1].transpose();
-  gWWbo[layers-1].noalias() += delta_y * hhb[layers-1].transpose();
+  gWWfo[layers-1].noalias() += delta_y * hhf[layers-1].transpose() + lambda * gWWfo[layers-1];
+  gWWbo[layers-1].noalias() += delta_y * hhb[layers-1].transpose() + lambda * gWWbo[layers-1];
   gbo.noalias() += delta_y * VectorXd::Ones(T);
 
   MatrixXd deltaf[layers+1];
@@ -591,18 +592,18 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
     MatrixXd dJdrrf = dhtfdrrf.cwiseProduct(dJdhtf);
 
     MatrixXd dJdAhtf = fp(hhtf[l]).cwiseProduct(dJdhtf);
-    gWWff[l].noalias() += dJdAhtf * cur_hf.transpose();
-    gWWfb[l].noalias() += dJdAhtf * cur_hb.transpose();
+    gWWff[l].noalias() += dJdAhtf * cur_hf.transpose() + lambda * WWff[l];
+    gWWfb[l].noalias() += dJdAhtf * cur_hb.transpose() + lambda * WWfb[l];
     gbbhf[l].noalias() += dJdAhtf * VectorXd::Ones(T);
 
     MatrixXd dJdAzzf = f2p(zzf[l]).cwiseProduct(dJdzzf);
-    gWWzff[l].noalias() += dJdAzzf * cur_hf.transpose();
-    gWWzfb[l].noalias() += dJdAzzf * cur_hb.transpose();
+    gWWzff[l].noalias() += dJdAzzf * cur_hf.transpose() + lambda * WWzff[l];
+    gWWzfb[l].noalias() += dJdAzzf * cur_hb.transpose() + lambda * WWzfb[l];
     gbbzhf[l].noalias() += dJdAzzf * VectorXd::Ones(T);
 
     MatrixXd dJdArrf = f2p(rrf[l]).cwiseProduct(dJdrrf);
-    gWWrff[l].noalias() += dJdArrf * cur_hf.transpose();
-    gWWrfb[l].noalias() += dJdArrf * cur_hb.transpose();
+    gWWrff[l].noalias() += dJdArrf * cur_hf.transpose() + lambda * WWrff[l];
+    gWWrfb[l].noalias() += dJdArrf * cur_hb.transpose() + lambda * WWrfb[l];
     gbbrhf[l].noalias() += dJdArrf * VectorXd::Ones(T);
 
     for (uint t = 1; t < T; t++) {
@@ -610,6 +611,9 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
       gVVrf[l].noalias() += dJdArrf.col(t)   * hhf[l].col(t-1).transpose();
       gVVzf[l].noalias() += dJdAzzf.col(t)   * hhf[l].col(t-1).transpose();
     }
+    gVVf[l].noalias()  += lambda * VVf[l];
+    gVVrf[l].noalias() += lambda * VVrf[l];
+    gVVzf[l].noalias() += lambda * VVzf[l];
 
     // Propagate error downwards
     deltaf[l].noalias() += WWzff[l].transpose() * dJdAzzf;
@@ -645,18 +649,18 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
     MatrixXd dJdrrb = dhhtbdrrb.cwiseProduct(dJdhhtb);
 
     MatrixXd dJdAhhtb = fp(hhtb[l]).cwiseProduct(dJdhhtb);
-    gWWbf[l].noalias() += dJdAhhtb * cur_hf.transpose();
-    gWWbb[l].noalias() += dJdAhhtb * cur_hb.transpose();
+    gWWbf[l].noalias() += dJdAhhtb * cur_hf.transpose() + lambda * WWbf[l];
+    gWWbb[l].noalias() += dJdAhhtb * cur_hb.transpose() + lambda * WWbb[l];
     gbbhb[l].noalias() += dJdAhhtb * VectorXd::Ones(T);
 
     MatrixXd dJdAzzb = f2p(zzb[l]).cwiseProduct(dJdzzb);
-    gWWzbf[l].noalias() += dJdAzzb * cur_hf.transpose();
-    gWWzbb[l].noalias() += dJdAzzb * cur_hb.transpose();
+    gWWzbf[l].noalias() += dJdAzzb * cur_hf.transpose() + lambda * WWzbf[l];
+    gWWzbb[l].noalias() += dJdAzzb * cur_hb.transpose() + lambda * WWzbb[l];
     gbbzhb[l].noalias() += dJdAzzb * VectorXd::Ones(T);
 
     MatrixXd dJdArrb = f2p(rrb[l]).cwiseProduct(dJdrrb);
-    gWWrbf[l].noalias() += dJdArrb * cur_hf.transpose();
-    gWWrbb[l].noalias() += dJdArrb * cur_hb.transpose();
+    gWWrbf[l].noalias() += dJdArrb * cur_hf.transpose() + lambda * WWrbf[l];
+    gWWrbb[l].noalias() += dJdArrb * cur_hb.transpose() + lambda * WWrbb[l];
     gbbrhb[l].noalias() += dJdArrb * VectorXd::Ones(T);
 
     for (uint t = 0; t < T-1; t++) {
@@ -664,6 +668,9 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
       gVVrb[l].noalias() += dJdArrb.col(t) * hhb[l].col(t+1).transpose();
       gVVzb[l].noalias() += dJdAzzb.col(t) * hhb[l].col(t+1).transpose();
     }
+    gVVb[l].noalias()  += lambda * VVb[l];
+    gVVrb[l].noalias() += lambda * VVrb[l];
+    gVVzb[l].noalias() += lambda * VVzb[l];
 
     // Propagate error downwards
     deltaf[l].noalias() += WWzbf[l].transpose() * dJdAzzb;
@@ -712,15 +719,15 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
   MatrixXd dJdrf = dhtfdrf.cwiseProduct(dJdhtf);
 
   MatrixXd dJdAhtf = fp(htf).cwiseProduct(dJdhtf);
-  gWf.noalias()  += dJdAhtf * x.transpose();
+  gWf.noalias()  += dJdAhtf * x.transpose() + lambda * Wf;
   gbhf.noalias() += dJdAhtf * VectorXd::Ones(T);
 
   MatrixXd dJdAzf = f2p(zf).cwiseProduct(dJdzf);
-  gWzf.noalias()  += dJdAzf * x.transpose();
+  gWzf.noalias()  += dJdAzf * x.transpose() + lambda * Wzf;
   gbzhf.noalias() += dJdAzf * VectorXd::Ones(T);
 
   MatrixXd dJdArf = f2p(rf).cwiseProduct(dJdrf);
-  gWrf.noalias()  += dJdArf * x.transpose();
+  gWrf.noalias()  += dJdArf * x.transpose() + lambda * Wrf;
   gbrhf.noalias() += dJdArf * VectorXd::Ones(T);
 
   for (uint t = 1; t < T; t++) {
@@ -728,6 +735,9 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
     gVrf.noalias() += dJdArf.col(t) * hf.col(t-1).transpose();
     gVzf.noalias() += dJdAzf.col(t) * hf.col(t-1).transpose();
   }
+  gVf.noalias() += lambda * Vf;
+  gVrf.noalias() += lambda * Vrf;
+  gVzf.noalias() += lambda * Vzf;
 
   // Update gradients at input layer
   MatrixXd dhtbdrb = MatrixXd::Zero(nh, T);
@@ -755,15 +765,15 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
   MatrixXd dJdrb = dhtbdrb.cwiseProduct(dJdhtb);
 
   MatrixXd dJdAhtb = fp(htb).cwiseProduct(dJdhtb);
-  gWb.noalias()  += dJdAhtb * x.transpose();
+  gWb.noalias()  += dJdAhtb * x.transpose() + lambda * Wb;
   gbhb.noalias() += dJdAhtb * VectorXd::Ones(T);
 
   MatrixXd dJdAzb = f2p(zb).cwiseProduct(dJdzb);
-  gWzb.noalias()  += dJdAzb * x.transpose();
+  gWzb.noalias()  += dJdAzb * x.transpose() + lambda * Wzb;
   gbzhb.noalias() += dJdAzb * VectorXd::Ones(T);
 
   MatrixXd dJdArb = f2p(rb).cwiseProduct(dJdrb);
-  gWrb.noalias()  += dJdArb * x.transpose();
+  gWrb.noalias()  += dJdArb * x.transpose() + lambda * Wrb;
   gbrhb.noalias() += dJdArb * VectorXd::Ones(T);
 
   for (uint t = 0; t < T-1; t++) {
@@ -771,91 +781,48 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
     gVrb.noalias() += dJdArb.col(t) * hb.col(t+1).transpose();
     gVzb.noalias() += dJdAzb.col(t) * hb.col(t+1).transpose();
   }
+  gVb.noalias() += lambda * Vb;
+  gVrb.noalias() += lambda * Vrb;
+  gVzb.noalias() += lambda * Vzb;
 
   return cost;
 }
 
-void GRURNN::update() {
+double GRURNN::get_norm() {
   double norm = 0;
 
-  // regularize
-  gbo.noalias() += lambda*bo;
-  for (uint l=layers-1; l<layers; l++) {
-    gWWfo[l].noalias() += (lambda)*WWfo[l];
-    gWWbo[l].noalias() += (lambda)*WWbo[l];
-  }
-
-  norm += 0.1* (gWo.squaredNorm() + gbo.squaredNorm());
+  norm += 0.1 * gWo.squaredNorm();
   for (uint l=0; l<layers; l++)
-    norm+= 0.1*(gWWfo[l].squaredNorm() + gWWbo[l].squaredNorm());
-
-  gWf.noalias()  += lambda*Wf;
-  gVf.noalias()  += lambda*Vf;
-  gWb.noalias()  += lambda*Wb;
-  gVb.noalias()  += lambda*Vb;
-  gbhf.noalias() += lambda*bhf;
-  gbhb.noalias() += lambda*bhb;
-
-  gWrf.noalias()  += lambda*Wrf;
-  gVrf.noalias()  += lambda*Vrf;
-  gWrb.noalias()  += lambda*Wrb;
-  gVrb.noalias()  += lambda*Vrb;
-  gbrhf.noalias() += lambda*brhf;
-  gbrhb.noalias() += lambda*brhb;
-
-  gWzf.noalias()  += lambda*Wzf;
-  gVzf.noalias()  += lambda*Vzf;
-  gWzb.noalias()  += lambda*Wzb;
-  gVzb.noalias()  += lambda*Vzb;
-  gbzhf.noalias() += lambda*bzhf;
-  gbzhb.noalias() += lambda*bzhb;
+    norm += 0.1 * (gWWfo[l].squaredNorm() + gWWbo[l].squaredNorm());
 
   norm += gWf.squaredNorm() + gVf.squaredNorm()
-          + gWb.squaredNorm() + gVb.squaredNorm()
-          + gbhf.squaredNorm() + gbhb.squaredNorm();
+          + gWb.squaredNorm() + gVb.squaredNorm();
 
   norm += gWrf.squaredNorm() + gVrf.squaredNorm()
-          + gWrb.squaredNorm() + gVrb.squaredNorm()
-          + gbrhf.squaredNorm() + gbrhb.squaredNorm();
+          + gWrb.squaredNorm() + gVrb.squaredNorm();
 
   norm += gWzf.squaredNorm() + gVzf.squaredNorm()
-          + gWzb.squaredNorm() + gVzb.squaredNorm()
-          + gbrhf.squaredNorm() + gbrhb.squaredNorm();        
+          + gWzb.squaredNorm() + gVzb.squaredNorm();
 
   for (uint l=0; l<layers; l++) {
-    gWWff[l].noalias() += lambda*WWff[l];
-    gWWfb[l].noalias() += lambda*WWfb[l];
-    gWWbf[l].noalias() += lambda*WWbf[l];
-    gWWbb[l].noalias() += lambda*WWbb[l];
-    gVVf[l].noalias()  += lambda*VVf[l];
-    gVVb[l].noalias()  += lambda*VVb[l];
-    gbbhf[l].noalias() += lambda*bbhf[l];
-    gbbhb[l].noalias() += lambda*bbhb[l];
-
-    gWWrff[l].noalias() += lambda*WWrff[l];
-    gWWrfb[l].noalias() += lambda*WWrfb[l];
-    gWWrbf[l].noalias() += lambda*WWrbf[l];
-    gWWrbb[l].noalias() += lambda*WWrbb[l];
-    gVVrf[l].noalias()  += lambda*VVrf[l];
-    gVVrb[l].noalias()  += lambda*VVrb[l];
-    gbbrhf[l].noalias() += lambda*bbrhf[l];
-    gbbrhb[l].noalias() += lambda*bbrhb[l];
-
     norm += gWWff[l].squaredNorm() + gWWfb[l].squaredNorm()
             + gWWbf[l].squaredNorm() + gWWbb[l].squaredNorm()
-            + gVVf[l].squaredNorm() + gVVb[l].squaredNorm()
-            + gbbhf[l].squaredNorm() + gbbhb[l].squaredNorm();
+            + gVVf[l].squaredNorm() + gVVb[l].squaredNorm();
 
-   norm += gWWrff[l].squaredNorm() + gWWrfb[l].squaredNorm()
+    norm += gWWrff[l].squaredNorm() + gWWrfb[l].squaredNorm()
             + gWWrbf[l].squaredNorm() + gWWrbb[l].squaredNorm()
-            + gVVrf[l].squaredNorm() + gVVrb[l].squaredNorm()
-            + gbbrhf[l].squaredNorm() + gbbrhb[l].squaredNorm();
+            + gVVrf[l].squaredNorm() + gVVrb[l].squaredNorm();
 
-   norm += gWWzff[l].squaredNorm() + gWWzfb[l].squaredNorm()
+    norm += gWWzff[l].squaredNorm() + gWWzfb[l].squaredNorm()
             + gWWrbf[l].squaredNorm() + gWWzbb[l].squaredNorm()
-            + gVVzf[l].squaredNorm() + gVVzb[l].squaredNorm()
-            + gbbzhf[l].squaredNorm() + gbbzhb[l].squaredNorm();
+            + gVVzf[l].squaredNorm() + gVVzb[l].squaredNorm();  
   }
+
+  return norm;
+}
+
+void GRURNN::update() {
+  double norm  = NORMALIZE ? get_norm() : 1;
 
   // update velocities
   vbo = 0.1*lr*gbo + mr*vbo;
@@ -863,11 +830,6 @@ void GRURNN::update() {
     vWWfo[l] = 0.1*lr*gWWfo[l] + mr*vWWfo[l];
     vWWbo[l] = 0.1*lr*gWWbo[l] + mr*vWWbo[l];
   }
-
-  if (NORMALIZE)
-    norm = (norm > 25) ? sqrt(norm/25) : 1;
-  else
-    norm = 1;
 
   vWf  = lr*gWf/norm  + mr*vWf;
   vVf  = lr*gVf/norm  + mr*vVf;
