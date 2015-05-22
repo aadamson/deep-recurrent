@@ -123,7 +123,6 @@ int main(int argc, char **argv) {
   srand(seed);
 
   LookupTable LT;
-  // i used mikolov's word2vec (300d) for my experiments, not CW
   LT.load(embeddings_file, embeddings_tokens, nx, false);
   vector<vector<string> > X;
   vector<vector<string> > T;
@@ -139,23 +138,37 @@ int main(int argc, char **argv) {
   cout << "Validation set size: " << validX.size() << endl;
   cout << "Test set size: " << testX.size() << endl;
 
-  Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  //GRURNN *best_model = NULL;
+  // Create models output directory if one doesn't exist
+  string model_dir = "models/" + filename(data) + "/gru_drnt";
 
-  for (; lr > 1e-6; lr /= 5.0) {
-    for (; dropout_prob <= 0.2; dropout_prob += 0.1) {
-      for (; null_class_weight >= 0.3; null_class_weight -= 0.1) {
-        cout << "Trying " << lr << " " << dropout_prob << " " << null_class_weight << endl;
-        GRURNN brnn(nx, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
-        auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80);
+  if (!conditional_mkdir(model_dir)) {
+    cerr << "Failed to create model output directory " << model_dir << endl;
+    cerr << "Exiting" << endl;
+    return -1;
+  }
+
+  Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
+  string best_model_outpath = "";
+
+  for (float _lr = lr; _lr > 1e-6; _lr /= 5.0) {
+    for (float _dropout_prob = dropout_prob; _dropout_prob <= 0.2; _dropout_prob += 0.1) {
+      for (float _null_class_weight = null_class_weight; _null_class_weight >= 0.3; _null_class_weight -= 0.1) {
+        cout << "Trying " << _lr << " " << _dropout_prob << " " << _null_class_weight << endl;
+        
+        GRURNN brnn(nx, 20, ny, LT, lambda, _lr, mr, _null_class_weight, _dropout_prob);
+        string outpath = model_dir + "/" + brnn.model_name();
+        auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80, outpath);
         if (results(2,0) > best(2,0)) {
           best = results;
+          best_model_outpath = outpath;
           cout << "--NEW BEST--" << endl;
-          //best_model = brnn;
         }
       }
     }
   }
+
+  cout << "Best results: " << best << endl; 
+  cout << "Best model located at " << best_model_outpath << endl;
   
   return 0;
 }

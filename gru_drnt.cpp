@@ -949,57 +949,90 @@ bool GRURNN::is_nan() {
 }
 
 void GRURNN::load(string fname) {
-  // ifstream in(fname.c_str());
+  ifstream in(fname.c_str());
 
-  // in >> nx >> nh >> nh >> ny;
+  in >> nx >> nh >> ny;
 
-  // in >> Wf >> Vf >> bhf
-  // >> Wb >> Vb >> bhb;
+  in >> Wf >> Vf >> bhf >> Wb >> Vb >> bhb;
+  in >> Wrf >> Vrf >> brhf >> Wrb >> Vrb >> brhb;
+  in >> Wzf >> Vzf >> bzhf >> Wzb >> Vzb >> bzhb;
 
-  // for (uint l=0; l<layers; l++) {
-  //   in >> WWff[l] >> WWfb[l] >> VVf[l] >> bbhf[l]
-  //   >> WWbb[l] >> WWbf[l] >> VVb[l] >> bbhb[l];
-  // }
+  for (uint l=0; l<layers; l++) {
+    in >> WWff[l] >> WWfb[l] >> VVf[l] >> bbhf[l] >> WWbb[l] >> WWbf[l] >> VVb[l] >> bbhb[l];
+    in >> WWrff[l] >> WWrfb[l] >> VVrf[l] >> bbrhf[l] >> WWrbb[l] >> WWrbf[l] >> VVrb[l] >> bbrhb[l];
+    in >> WWzff[l] >> WWzfb[l] >> VVzf[l] >> bbzhf[l] >> WWzbb[l] >> WWzbf[l] >> VVzb[l] >> bbzhb[l];
+  } 
 
-  // in >> Wfo >> Wbo;
-  // for (uint l=0; l<layers; l++)
-  //   in >> WWfo[l] >> WWbo[l];
-  // in >> Wo >> bo;
+  in >> Wfo >> Wbo;
+  for (uint l=0; l<layers; l++) {
+    in >> WWfo[l] >> WWbo[l];
+  }
+  in >> Wo >> bo;
 }
 
 void GRURNN::save(string fname) {
-  // ofstream out(fname.c_str());
+  ofstream out(fname.c_str());
 
-  // out << nx << " " << nh << " " << nh << " " << ny << endl;
+  out << nx << " " << nh << " " << ny << endl;
 
-  // out << Wf << endl;
-  // out << Vf << endl;
-  // out << bhf << endl;
+  out << Wf << endl;
+  out << Vf << endl;
+  out << bhf << endl;
+  out << Wb << endl;
+  out << Vb << endl;
+  out << bhb << endl;
 
-  // out << Wb << endl;
-  // out << Vb << endl;
-  // out << bhb << endl;
+  out << Wrf << endl;
+  out << Vrf << endl;
+  out << brhf << endl;
+  out << Wrb << endl;
+  out << Vrb << endl;
+  out << brhb << endl;
 
-  // for (uint l=0; l<layers; l++) {
-  //   out << WWff[l] << endl;
-  //   out << WWfb[l] << endl;
-  //   out << VVf[l] << endl;
-  //   out << bbhf[l] << endl;
+  out << Wzf << endl;
+  out << Vzf << endl;
+  out << bzhf << endl;
+  out << Wzb << endl;
+  out << Vzb << endl;
+  out << bzhb << endl;
 
-  //   out << WWbb[l] << endl;
-  //   out << WWbf[l] << endl;
-  //   out << VVb[l]  << endl;
-  //   out << bbhb[l] << endl;
-  // }
+  for (uint l=0; l<layers; l++) {
+    out << WWff[l] << endl;
+    out << WWfb[l] << endl;
+    out << VVf[l] << endl;
+    out << bbhf[l] << endl;
+    out << WWbb[l] << endl;
+    out << WWbf[l] << endl;
+    out << VVb[l]  << endl;
+    out << bbhb[l] << endl;
 
-  // out << Wfo << endl;
-  // out << Wbo << endl;
-  // for (uint l=0; l<layers; l++) {
-  //   out << WWfo[l] << endl;
-  //   out << WWbo[l] << endl;
-  // }
-  // out << Wo << endl;
-  // out << bo << endl;
+    out << WWrff[l] << endl;
+    out << WWrfb[l] << endl;
+    out << VVrf[l] << endl;
+    out << bbrhf[l] << endl;
+    out << WWrbb[l] << endl;
+    out << WWrbf[l] << endl;
+    out << VVrb[l]  << endl;
+    out << bbrhb[l] << endl;
+
+    out << WWzff[l] << endl;
+    out << WWzfb[l] << endl;
+    out << VVzf[l] << endl;
+    out << bbzhf[l] << endl;
+    out << WWzbb[l] << endl;
+    out << WWzbf[l] << endl;
+    out << VVzb[l]  << endl;
+    out << bbzhb[l] << endl;
+  }
+
+  out << Wfo << endl;
+  out << Wbo << endl;
+  for (uint l=0; l<layers; l++) {
+    out << WWfo[l] << endl;
+    out << WWbo[l] << endl;
+  }
+  out << Wo << endl;
+  out << bo << endl;
 }
 
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {

@@ -35,7 +35,8 @@ public:
                              vector<vector<string> > &testX,
                              vector<vector<string> > &testL,
                              uint max_epoch,
-                             uint mini_batch);
+                             uint mini_batch,
+                             string outpath = "");
   Matrix<double, 3, 2> testSequential(vector<vector<string> > &sents,
                                       vector<vector<string> > &labels);
 };
@@ -242,7 +243,8 @@ Model::train(vector<vector<string> > &sents,
              vector<vector<string> > &testX,
              vector<vector<string> > &testL,
              uint max_epoch,
-             uint mini_batch) {
+             uint mini_batch,
+             string outpath) {
   vector<uint> perm;
   for (uint i=0; i<sents.size(); i++)
     perm.push_back(i);
@@ -257,7 +259,7 @@ Model::train(vector<vector<string> > &sents,
       if ((i+1) % mini_batch == 0 || i == sents.size()-1)
         update();
     }
-    if (epoch % 4 == 0) {
+    if (epoch % 10 == 0 || epoch == max_epoch - 1) {
 #ifdef GRADCHECK
       for (int i = 0; i < 3; i++) {
         int idx = rand() % sents.size();
@@ -284,7 +286,7 @@ Model::train(vector<vector<string> > &sents,
       if (bestVal(2,0) < resVal(2,0)) {
         bestVal = resVal;
         bestTest = resTest;
-        save("models/" + model_name());
+        if (outpath != "") save(outpath);
       }
 
       if (is_nan()) {

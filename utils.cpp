@@ -12,6 +12,7 @@
 #include <set>
 #include <iterator>
 #include <cassert>
+#include <sys/stat.h>
 #include "Eigen/Dense"
 
 #define uint unsigned int
@@ -267,5 +268,20 @@ vector<string> split(const string &s, char delim) {
     elems.push_back(item);
   }
   return elems;
+}
+
+string filename(string filepath) {
+  unsigned int a = filepath.rfind('.');
+  unsigned int b = filepath.rfind('/');
+  string fname = filepath.substr(b+1,a-b-1);
+  return fname;
+}
+
+bool conditional_mkdir(const string &path) {
+  struct stat s;
+  if (stat(path.c_str(), &s) == 0 && S_ISDIR(s.st_mode)) return true;
+  if (mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) return false;
+  
+  return true; 
 }
 #endif
