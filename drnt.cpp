@@ -590,7 +590,7 @@ string RNN::model_name() {
   ostringstream strS;
   strS << "drnt_" << layers << "_" << nhf << "_"
   << nhb << "_" << dropout_prob << "_"
-  << lr << "_" << LAMBDA << "_" << mr ;
+  << lr << "_" << LAMBDA << "_" << mr << "_" << null_class_weight ;
   string fname = strS.str();
   return fname;
 }

@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
   string best_model_outpath = "";
 
-  for (float _lr = lr; _lr > 1e-6; _lr /= 5.0) {
+  for (float _lr = lr; _lr > 1e-6; _lr /= 10.0) {
     for (float _dropout_prob = dropout_prob; _dropout_prob <= 0.2; _dropout_prob += 0.1) {
       for (float _null_class_weight = null_class_weight; _null_class_weight >= 0.3; _null_class_weight -= 0.1) {
         cout << "Trying " << _lr << " " << _dropout_prob << " " << _null_class_weight << endl;

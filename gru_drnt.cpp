@@ -1047,7 +1047,7 @@ string GRURNN::model_name() {
   ostringstream strS;
   strS << "gru_drnt_" << layers << "_" << nh << "_"
   << nh << "_" << dropout_prob << "_"
-  << lr << "_" << lambda << "_" << mr ;
+  << lr << "_" << lambda << "_" << mr << "_" << null_class_weight;
   string fname = strS.str();
   return fname;
 }
