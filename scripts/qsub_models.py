@@ -85,7 +85,7 @@ def main():
                                          'model_name': model_name, 
                                          'script_path': script_name })
         print job_script
-        subprocess.call(job_script)
+        subprocess.call(job_script, shell=True)
 
 
 if __name__ == '__main__':
