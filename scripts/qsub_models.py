@@ -36,7 +36,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--outdir', dest='outdir', type=str,
                         help='Output directory for run')
-    parser.add_argument('-l', '--lambda', dest='lam', type=float, default=0.0001,
+    parser.add_argument('-l', '--lambda', dest='lam', type=float, nargs='+', default=[0.0001],
                         help='Set lambda value used for L2-regularization')
     parser.add_argument('--emb-file', dest='emb_file', type=str,
                         help='Location of file containing word embeddings')
@@ -60,17 +60,19 @@ def main():
 
     base_dict = { 'emb_file': args.emb_file, 'emb_dim': args.emb_dim, 
                   'num_tokens': args.num_tokens, 'data': args.data,
-                  'model': args.model, 'outdir': args.outdir, 'lambda': args.lam,
+                  'model': args.model, 'outdir': args.outdir,
                   'num_epochs': args.num_epochs }
     options_dicts = []
 
     for weight in args.weight:
         for lr in args.lr:
             for dr in args.dr:
-                new_dict = base_dict.copy()
-                new_dict['weight'] = weight
-                new_dict['lr'] = lr
-                new_dict['dr'] = dr
+                for lam in args.lam:
+                    new_dict = base_dict.copy()
+                    new_dict['weight'] = weight
+                    new_dict['lr'] = lr
+                    new_dict['dr'] = dr
+                    new_dict['lambda'] = lam
 
                 options_dicts.append(new_dict)
 
