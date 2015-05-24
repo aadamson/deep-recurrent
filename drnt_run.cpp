@@ -32,7 +32,8 @@ int main(int argc, char **argv) {
   string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
   int embeddings_tokens = 268810;
   int nx = 25;
-  string data  = "";
+  string data   = "";
+  string outdir = "models/";
 
   int c;
 
@@ -48,7 +49,7 @@ int main(int argc, char **argv) {
         {"lambda", required_argument, 0, 'h'},
         {"emb",    required_argument, 0, 'i'},
         {"nt",     required_argument, 0, 'j'},
-        {"nx",     required_argument, 0, 'k'},          
+        {"nx",     required_argument, 0, 'k'}
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
@@ -122,6 +123,14 @@ int main(int argc, char **argv) {
 
   srand(seed);
 
+  string model_dir = outdir + filename(data) + "/drnt";
+
+  if (!conditional_mkdir(model_dir)) {
+    cerr << "Failed to create model output directory " << model_dir << endl;
+    cerr << "Exiting" << endl;
+    return -1;
+  }
+
   LookupTable LT;
   // i used mikolov's word2vec (300d) for my experiments, not CW
   LT.load(embeddings_file, embeddings_tokens, nx, false);
@@ -141,7 +150,8 @@ int main(int argc, char **argv) {
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
   RNN brnn(nx, 25, 25, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
-  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80);
+  string outpath = model_dir + "/" + brnn.model_name();
+  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80, outpath);
 
   return 0;
 }

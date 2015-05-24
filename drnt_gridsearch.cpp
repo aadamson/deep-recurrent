@@ -32,7 +32,8 @@ int main(int argc, char **argv) {
   string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
   int embeddings_tokens = 268810;
   int nx = 25;
-  string data  = "";
+  string data   = "";
+  string outdir = "models/";
 
   int c;
 
@@ -48,12 +49,13 @@ int main(int argc, char **argv) {
         {"lambda", required_argument, 0, 'h'},
         {"emb",    required_argument, 0, 'i'},
         {"nt",     required_argument, 0, 'j'},
-        {"nx",     required_argument, 0, 'k'},          
+        {"nx",     required_argument, 0, 'k'},
+        {"outdir", required_argument, 0, 'l'},          
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:",
+    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:l:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -111,6 +113,10 @@ int main(int argc, char **argv) {
         nx = stoi(optarg);
         break;
 
+      case 'l':
+        outdir = optarg;
+        break;
+
       case '?':
         /* getopt_long already printed an error message. */
         break;
@@ -138,7 +144,7 @@ int main(int argc, char **argv) {
   cout << "Validation set size: " << validX.size() << endl;
   cout << "Test set size: " << testX.size() << endl;
 
-  string model_dir = "models/" + filename(data) + "/drnt";
+  string model_dir = outdir + filename(data) + "/drnt";
 
   if (!conditional_mkdir(model_dir)) {
     cerr << "Failed to create model output directory " << model_dir << endl;

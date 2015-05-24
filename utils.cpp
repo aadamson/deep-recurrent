@@ -280,7 +280,8 @@ string filename(string filepath) {
 bool conditional_mkdir(const string &path) {
   struct stat s;
   if (stat(path.c_str(), &s) == 0 && S_ISDIR(s.st_mode)) return true;
-  if (mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) return false;
+  string mkcmd =  "mkdir -p " + path;
+  system(mkcmd.c_str());
   
   return true; 
 }

@@ -11,4 +11,7 @@ rm eigen.tar.gz
 # compile & run
 cmake .
 make
+mkdir logs
+mkdir models
+mkdir temp_scripts
 ./DeepRecurrent --data data/agent.txt --lr 0.001

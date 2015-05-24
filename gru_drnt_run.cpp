@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
   int embeddings_tokens = 268810;
   int nx = 25;
   string data  = "";
+  string outdir = "models/";
 
   int c;
 
@@ -122,6 +123,14 @@ int main(int argc, char **argv) {
 
   srand(seed);
 
+  string model_dir = outdir + filename(data) + "/gru_drnt";
+
+  if (!conditional_mkdir(model_dir)) {
+    cerr << "Failed to create model output directory " << model_dir << endl;
+    cerr << "Exiting" << endl;
+    return -1;
+  }
+
   LookupTable LT;
   // i used mikolov's word2vec (300d) for my experiments, not CW
   LT.load(embeddings_file, embeddings_tokens, nx, false);
@@ -140,7 +149,8 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
   
   GRURNN brnn(nx, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
-  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80);
+  string outpath = model_dir + "/" + brnn.model_name();
+  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80, outpath);
   
   return 0;
 }
