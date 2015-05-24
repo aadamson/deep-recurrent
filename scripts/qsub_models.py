@@ -74,7 +74,7 @@ def main():
                     new_dict['dr'] = dr
                     new_dict['lambda'] = lam
 
-                options_dicts.append(new_dict)
+                    options_dicts.append(new_dict)
 
     for options in options_dicts:
         script = stream_run_script(options)
