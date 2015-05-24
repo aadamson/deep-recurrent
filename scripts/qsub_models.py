@@ -77,7 +77,7 @@ def main():
         data_short_name = options['data'][options['data'].rfind('/')+1:options['data'].rfind('.')]
         model_name = "%s_lr_%g_dr_%g_weight_%g_lambda_%g_data_%s" % (model_short_name, options['lr'], options['dr'], options['weight'], options['lambda'], data_short_name)
 
-        script_name = "./temp_scripts/%d.sh" % random.randint(1, 1e6)
+        script_name = "./temp_scripts/run_%d.sh" % random.randint(1, 1e6)
         script.dump(script_name)
         subprocess.call(["chmod", "u+x", script_name])
 
