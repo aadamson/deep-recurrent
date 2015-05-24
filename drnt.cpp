@@ -588,9 +588,9 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 
 string RNN::model_name() {
   ostringstream strS;
-  strS << "drnt_" << layers << "_" << nhf << "_"
-  << nhb << "_" << dropout_prob << "_"
-  << lr << "_" << LAMBDA << "_" << mr << "_" << null_class_weight ;
+  strS << "drnt_layers_" << layers << "_nhf_" << nhf << "_nhb_"
+  << nhb << "_dr_" << dropout_prob << "_lr_"
+  << lr << "_lambda_" << lambda << "_mr_" << mr << "_weight_" << null_class_weight ;
   string fname = strS.str();
   return fname;
 }

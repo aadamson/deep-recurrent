@@ -1045,9 +1045,9 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 
 string GRURNN::model_name() {
   ostringstream strS;
-  strS << "gru_drnt_" << layers << "_" << nh << "_"
-  << nh << "_" << dropout_prob << "_"
-  << lr << "_" << lambda << "_" << mr << "_" << null_class_weight;
+  strS << "gru_drnt_layers_" << layers << "_nh_" << nh << "_dr_"
+  << dropout_prob << "_lr_"
+  << lr << "_lam_" << lambda << "_mr_" << mr << "_weight_" << null_class_weight;
   string fname = strS.str();
   return fname;
 }
