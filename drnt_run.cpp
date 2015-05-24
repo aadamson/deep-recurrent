@@ -32,8 +32,9 @@ int main(int argc, char **argv) {
   string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
   int embeddings_tokens = 268810;
   int nx = 25;
-  string data   = "";
+  string data  = "";
   string outdir = "models/";
+  int num_epochs = 40;
 
   int c;
 
@@ -49,7 +50,8 @@ int main(int argc, char **argv) {
         {"lambda", required_argument, 0, 'h'},
         {"emb",    required_argument, 0, 'i'},
         {"nt",     required_argument, 0, 'j'},
-        {"nx",     required_argument, 0, 'k'}
+        {"nx",     required_argument, 0, 'k'},
+        {"epochs", required_argument, 0, 'l'},          
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
@@ -112,6 +114,10 @@ int main(int argc, char **argv) {
         nx = stoi(optarg);
         break;
 
+      case 'l':
+        num_epochs = stoi(optarg);
+        break;        
+
       case '?':
         /* getopt_long already printed an error message. */
         break;
@@ -151,7 +157,7 @@ int main(int argc, char **argv) {
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
   RNN brnn(nx, 25, 25, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
   string outpath = model_dir + "/" + brnn.model_name();
-  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80, outpath);
+  auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, num_epochs, 80, outpath);
 
   return 0;
 }

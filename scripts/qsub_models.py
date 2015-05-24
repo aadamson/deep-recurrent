@@ -19,7 +19,8 @@ def stream_run_script(options):
                              weight=options['weight'],
                              lr=options['lr'],
                              dr=options['dr'],
-                             outdir=options['outdir'])
+                             outdir=options['outdir'],
+                             num_epochs=options['num_epochs'])
     return script
 
 def render_job_script(options):
@@ -51,13 +52,16 @@ def main():
                         help='Null class weights to test on')
     parser.add_argument('-dr', dest='dr', type=float, nargs='+', default=[0.0],
                         help='Dropout probabilities to test on')
+    parser.add_argument('--num_epochs', dest='num_epochs', type=int, default=40,
+                        help='Number of epochs to train model for')
     parser.add_argument('--model', dest='model', type=str, default='GruDeepRecurrent',
                         help='Name of binary of model to run')
     args = parser.parse_args()
 
     base_dict = { 'emb_file': args.emb_file, 'emb_dim': args.emb_dim, 
                   'num_tokens': args.num_tokens, 'data': args.data,
-                  'model': args.model, 'outdir': args.outdir, 'lambda': args.lam }
+                  'model': args.model, 'outdir': args.outdir, 'lambda': args.lam,
+                  'num_epochs': args.num_epochs }
     options_dicts = []
 
     for weight in args.weight:

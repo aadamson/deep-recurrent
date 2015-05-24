@@ -32,8 +32,9 @@ int main(int argc, char **argv) {
   string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
   int embeddings_tokens = 268810;
   int nx = 25;
-  string data   = "";
+  string data  = "";
   string outdir = "models/";
+  int num_epochs = 40;
 
   int c;
 
@@ -50,12 +51,12 @@ int main(int argc, char **argv) {
         {"emb",    required_argument, 0, 'i'},
         {"nt",     required_argument, 0, 'j'},
         {"nx",     required_argument, 0, 'k'},
-        {"outdir", required_argument, 0, 'l'},          
+        {"epochs", required_argument, 0, 'l'},          
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:l:",
+    c = getopt_long (argc, argv, "a:b:c:d:f:g:h:i:j:k:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -114,8 +115,8 @@ int main(int argc, char **argv) {
         break;
 
       case 'l':
-        outdir = optarg;
-        break;
+        num_epochs = stoi(optarg);
+        break;        
 
       case '?':
         /* getopt_long already printed an error message. */
@@ -161,7 +162,7 @@ int main(int argc, char **argv) {
       
       RNN brnn(nx, 20, 20, ny, LT, lambda, lr, mr, _null_class_weight, _dropout_prob);
       string outpath = model_dir + "/" + brnn.model_name();
-      auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, 24, 80, outpath);
+      auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, num_epochs, 80, outpath);
       if (results(2,0) > best(2,0)) {
         best = results;
         best_model_outpath = outpath;
