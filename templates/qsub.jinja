@@ -1,1 +1,1 @@
-qsub -cwd -o {{ outdir }}/logs/{{ model_name }}.out -e {{ outdir }}/logs/{{ model_name }}.err {{ script_path }}
+qsub -cwd -o {{ outdir }}/{{ model_name }}.out -e {{ outdir }}/{{ model_name }}.err {{ script_path }}

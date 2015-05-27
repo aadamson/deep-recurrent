@@ -19,7 +19,6 @@
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
-#define ERROR_SIGNAL
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define layers 3 // number of EXTRA (not all) hidden layers
 
@@ -34,7 +33,7 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p);
 
 class RNN : public Model {
 public:
-  RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout = 0.0);
+  RNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout = 0.0, bool error_signal = false);
 
   void save(string fname);
   void load(string fname);
@@ -86,104 +85,104 @@ private:
   MatrixXd vVVf[layers], vVVb[layers];
   VectorXd vbbhf[layers], vbbhb[layers];
 
-  uint nx, nhf, nhb, ny;
+  uint nx, nh, ny;
   uint epoch;
 
-  float lambda, lr, mr, null_class_weight, dropout_prob;
+  float lambda, lr, mr, null_class_weight, dropout_prob, error_signal;
 };
 
-RNN::RNN(uint nx, uint nhf, uint nhb, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout) :
-  LT(&LT), nx(nx), nhf(nhf), nhb(nhb), ny(ny), lambda(lambda), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout)
+RNN::RNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout, bool error_signal) :
+  LT(&LT), nx(nx), nh(nh), ny(ny), lambda(lambda), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout), error_signal(error_signal)
 {
   f = &relu;
   fp = &relup;
 
   // init randomly
-  Wf = MatrixXd(nhf,nx).unaryExpr(ptr_fun(urand));
-  Vf = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
-  bhf = VectorXd(nhf).unaryExpr(ptr_fun(urand));
+  Wf = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
+  Vf = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+  bhf = VectorXd(nh).unaryExpr(ptr_fun(urand));
 
-  Wb = MatrixXd(nhb,nx).unaryExpr(ptr_fun(urand));
-  Vb = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
-  bhb = VectorXd(nhb).unaryExpr(ptr_fun(urand));
+  Wb = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
+  Vb = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+  bhb = VectorXd(nh).unaryExpr(ptr_fun(urand));
 
   for (uint l=0; l<layers; l++) {
-    WWff[l] = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
-    WWfb[l] = MatrixXd(nhf,nhb).unaryExpr(ptr_fun(urand));
-    VVf[l] = MatrixXd(nhf,nhf).unaryExpr(ptr_fun(urand));
-    bbhf[l] = VectorXd(nhf).unaryExpr(ptr_fun(urand));
+    WWff[l] = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+    WWfb[l] = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+    VVf[l] = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+    bbhf[l] = VectorXd(nh).unaryExpr(ptr_fun(urand));
 
-    WWbb[l] = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
-    WWbf[l] = MatrixXd(nhb,nhf).unaryExpr(ptr_fun(urand));
-    VVb[l] = MatrixXd(nhb,nhb).unaryExpr(ptr_fun(urand));
-    bbhb[l] = VectorXd(nhb).unaryExpr(ptr_fun(urand));
+    WWbb[l] = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+    WWbf[l] = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+    VVb[l] = MatrixXd(nh,nh).unaryExpr(ptr_fun(urand));
+    bbhb[l] = VectorXd(nh).unaryExpr(ptr_fun(urand));
   }
 
-  Wfo = MatrixXd(ny,nhf).unaryExpr(ptr_fun(urand));
-  Wbo = MatrixXd(ny,nhb).unaryExpr(ptr_fun(urand));
+  Wfo = MatrixXd(ny,nh).unaryExpr(ptr_fun(urand));
+  Wbo = MatrixXd(ny,nh).unaryExpr(ptr_fun(urand));
   for (uint l=0; l<layers; l++) {
-    WWfo[l] = MatrixXd(ny,nhf).unaryExpr(ptr_fun(urand));
-    WWbo[l] = MatrixXd(ny,nhb).unaryExpr(ptr_fun(urand));
+    WWfo[l] = MatrixXd(ny,nh).unaryExpr(ptr_fun(urand));
+    WWbo[l] = MatrixXd(ny,nh).unaryExpr(ptr_fun(urand));
   }
   Wo = MatrixXd(ny,nx).unaryExpr(ptr_fun(urand));
   bo = VectorXd(ny).unaryExpr(ptr_fun(urand));
 
-  gWf = MatrixXd::Zero(nhf,nx);
-  gVf = MatrixXd::Zero(nhf,nhf);
-  gbhf = VectorXd::Zero(nhf);
+  gWf = MatrixXd::Zero(nh,nx);
+  gVf = MatrixXd::Zero(nh,nh);
+  gbhf = VectorXd::Zero(nh);
 
-  gWb = MatrixXd::Zero(nhb,nx);
-  gVb = MatrixXd::Zero(nhb,nhb);
-  gbhb = VectorXd::Zero(nhb);
+  gWb = MatrixXd::Zero(nh,nx);
+  gVb = MatrixXd::Zero(nh,nh);
+  gbhb = VectorXd::Zero(nh);
 
   for (uint l=0; l<layers; l++) {
-    gWWff[l] = MatrixXd::Zero(nhf,nhf);
-    gWWfb[l] = MatrixXd::Zero(nhf,nhb);
-    gVVf[l] = MatrixXd::Zero(nhf,nhf);
-    gbbhf[l] = VectorXd::Zero(nhf);
+    gWWff[l] = MatrixXd::Zero(nh,nh);
+    gWWfb[l] = MatrixXd::Zero(nh,nh);
+    gVVf[l] = MatrixXd::Zero(nh,nh);
+    gbbhf[l] = VectorXd::Zero(nh);
 
-    gWWbb[l] = MatrixXd::Zero(nhb,nhb);
-    gWWbf[l] = MatrixXd::Zero(nhb,nhf);
-    gVVb[l] = MatrixXd::Zero(nhb,nhb);
-    gbbhb[l] = VectorXd::Zero(nhb);
+    gWWbb[l] = MatrixXd::Zero(nh,nh);
+    gWWbf[l] = MatrixXd::Zero(nh,nh);
+    gVVb[l] = MatrixXd::Zero(nh,nh);
+    gbbhb[l] = VectorXd::Zero(nh);
   }
 
 
-  gWfo = MatrixXd::Zero(ny,nhf);
-  gWbo = MatrixXd::Zero(ny,nhb);
+  gWfo = MatrixXd::Zero(ny,nh);
+  gWbo = MatrixXd::Zero(ny,nh);
   for (uint l=0; l<layers; l++) {
-    gWWfo[l] = MatrixXd::Zero(ny,nhf);
-    gWWbo[l] = MatrixXd::Zero(ny,nhb);
+    gWWfo[l] = MatrixXd::Zero(ny,nh);
+    gWWbo[l] = MatrixXd::Zero(ny,nh);
   }
   gWo = MatrixXd::Zero(ny,nx);
   gbo = VectorXd::Zero(ny);
 
-  vWf = MatrixXd::Zero(nhf,nx);
-  vVf = MatrixXd::Zero(nhf,nhf);
-  vbhf = VectorXd::Zero(nhf);
+  vWf = MatrixXd::Zero(nh,nx);
+  vVf = MatrixXd::Zero(nh,nh);
+  vbhf = VectorXd::Zero(nh);
 
-  vWb = MatrixXd::Zero(nhb,nx);
-  vVb = MatrixXd::Zero(nhb,nhb);
-  vbhb = VectorXd::Zero(nhb);
+  vWb = MatrixXd::Zero(nh,nx);
+  vVb = MatrixXd::Zero(nh,nh);
+  vbhb = VectorXd::Zero(nh);
 
   for (uint l=0; l<layers; l++) {
-    vWWff[l] = MatrixXd::Zero(nhf,nhf);
-    vWWfb[l] = MatrixXd::Zero(nhf,nhb);
-    vVVf[l] = MatrixXd::Zero(nhf,nhf);
-    vbbhf[l] = VectorXd::Zero(nhf);
+    vWWff[l] = MatrixXd::Zero(nh,nh);
+    vWWfb[l] = MatrixXd::Zero(nh,nh);
+    vVVf[l] = MatrixXd::Zero(nh,nh);
+    vbbhf[l] = VectorXd::Zero(nh);
 
-    vWWbb[l] = MatrixXd::Zero(nhb,nhb);
-    vWWbf[l] = MatrixXd::Zero(nhb,nhf);
-    vVVb[l] = MatrixXd::Zero(nhb,nhb);
-    vbbhb[l] = VectorXd::Zero(nhb);
+    vWWbb[l] = MatrixXd::Zero(nh,nh);
+    vWWbf[l] = MatrixXd::Zero(nh,nh);
+    vVVb[l] = MatrixXd::Zero(nh,nh);
+    vbbhb[l] = VectorXd::Zero(nh);
   }
 
 
-  vWfo = MatrixXd::Zero(ny,nhf);
-  vWbo = MatrixXd::Zero(ny,nhb);
+  vWfo = MatrixXd::Zero(ny,nh);
+  vWbo = MatrixXd::Zero(ny,nh);
   for (uint l=0; l<layers; l++) {
-    vWWfo[l] = MatrixXd::Zero(ny,nhf);
-    vWWbo[l] = MatrixXd::Zero(ny,nhb);
+    vWWfo[l] = MatrixXd::Zero(ny,nh);
+    vWWbo[l] = MatrixXd::Zero(ny,nh);
   }
   vWo = MatrixXd::Zero(ny,nx);
   vbo = VectorXd::Zero(ny);
@@ -218,23 +217,23 @@ MatrixXd RNN::forward(const vector<string> &sent) {
   for (uint i=0; i<T; i++)
     x.col(i) = (*LT)[sent[i]];
 
-  hf = MatrixXd::Zero(nhf, T);
-  hb = MatrixXd::Zero(nhb, T);
+  hf = MatrixXd::Zero(nh, T);
+  hb = MatrixXd::Zero(nh, T);
 
   for (uint l=0; l<layers; l++) {
-    hhf[l] = MatrixXd::Zero(nhf, T);
-    hhb[l] = MatrixXd::Zero(nhb, T);
+    hhf[l] = MatrixXd::Zero(nh, T);
+    hhb[l] = MatrixXd::Zero(nh, T);
   }
 
   MatrixXd Wfx = Wf*x + bhf*RowVectorXd::Ones(T);
-  dropper = dropout(VectorXd::Ones(nhf), dropout_prob);
+  dropper = dropout(VectorXd::Ones(nh), dropout_prob);
   for (uint i=0; i<T; i++) {
     hf.col(i) = (i==0) ? f(Wfx.col(i)) : f(Wfx.col(i) + Vf*hf.col(i-1));
     hf.col(i) = hf.col(i).cwiseProduct(dropper);
   }
 
   MatrixXd Wbx = Wb*x + bhb*RowVectorXd::Ones(T);
-  dropper = dropout(VectorXd::Ones(nhb), dropout_prob);
+  dropper = dropout(VectorXd::Ones(nh), dropout_prob);
   for (uint i=T-1; i!=(uint)(-1); i--) {
     hb.col(i) = (i==T-1) ? f(Wbx.col(i)) : f(Wbx.col(i) + Vb*hb.col(i+1));
     hb.col(i) = hb.col(i).cwiseProduct(dropper);
@@ -247,7 +246,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
 
     MatrixXd WWffxf = WWff[l]* *xf + bbhf[l]*RowVectorXd::Ones(T);
     MatrixXd WWfbxb = WWfb[l]* *xb;
-    dropper = dropout(VectorXd::Ones(nhf), dropout_prob);
+    dropper = dropout(VectorXd::Ones(nh), dropout_prob);
     for (uint i=0; i<T; i++) {
       hhf[l].col(i) = (i==0) ? f(WWffxf.col(i) + WWfbxb.col(i))
                              : f(WWffxf.col(i) + WWfbxb.col(i) +
@@ -257,7 +256,7 @@ MatrixXd RNN::forward(const vector<string> &sent) {
 
     MatrixXd WWbfxf = WWbf[l]* *xf + bbhb[l]*RowVectorXd::Ones(T);
     MatrixXd WWbbxb = WWbb[l]* *xb;
-    dropper = dropout(VectorXd::Ones(nhb), dropout_prob);
+    dropper = dropout(VectorXd::Ones(nh), dropout_prob);
     for (uint i=T-1; i!=(uint)(-1); i--) {
       hhb[l].col(i) = (i==T-1) ? f(WWbbxb.col(i) + WWbfxf.col(i))
                                : f(WWbbxb.col(i) + WWbfxf.col(i) +
@@ -308,8 +307,8 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   MatrixXd deltaf[layers];
   MatrixXd deltab[layers];
   for (uint l = 0; l < layers; l++) {
-    deltaf[l] = MatrixXd::Zero(nhf, T);
-    deltab[l] = MatrixXd::Zero(nhb, T);
+    deltaf[l] = MatrixXd::Zero(nh, T);
+    deltab[l] = MatrixXd::Zero(nh, T);
   }
   // Create error vectors propagated by hidden units
   // Note that ReLU'(x) = ReLU'(ReLU(x)). In general, we assume that for the
@@ -326,11 +325,11 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
       deltaf[l].noalias() += fpf.cwiseProduct(WWff[l+1].transpose() * deltaf[l+1] + WWbf[l+1].transpose() * deltab[l+1]);
       deltab[l].noalias() += fpb.cwiseProduct(WWfb[l+1].transpose() * deltaf[l+1] + WWbb[l+1].transpose() * deltab[l+1]);
 
-#ifdef ERROR_SIGNAL
-      // Add supervised error signal (i.e. WW(f/b)o * delta_y)
-      deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y); 
-      deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y); 
-#endif
+      if (error_signal) {
+        // Add supervised error signal (i.e. WW(f/b)o * delta_y)
+        deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y); 
+        deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y);
+      } 
     } else {
       deltaf[l].noalias() += fpf.cwiseProduct(WWfo[l].transpose() * delta_y);
       deltab[l].noalias() += fpb.cwiseProduct(WWbo[l].transpose() * delta_y);
@@ -359,8 +358,8 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
   }
 
   // Calculate error vectors for input layer
-  MatrixXd deltaf_i = MatrixXd::Zero(nhf, T);
-  MatrixXd deltab_i = MatrixXd::Zero(nhb, T);
+  MatrixXd deltaf_i = MatrixXd::Zero(nh, T);
+  MatrixXd deltab_i = MatrixXd::Zero(nh, T);
 
   MatrixXd fpf = fp(hf);
   MatrixXd fpb = fp(hb);
@@ -394,7 +393,6 @@ double RNN::backward(const vector<string> &sent, const vector<string> &labels) {
 }
 
 void RNN::update() {
-  double lambda = LAMBDA;
   double norm = 0;
 
   // regularize
@@ -527,7 +525,7 @@ bool RNN::is_nan() {
 void RNN::load(string fname) {
   ifstream in(fname.c_str());
 
-  in >> nx >> nhf >> nhb >> ny;
+  in >> nx >> nh >> nh >> ny;
 
   in >> Wf >> Vf >> bhf
   >> Wb >> Vb >> bhb;
@@ -546,7 +544,7 @@ void RNN::load(string fname) {
 void RNN::save(string fname) {
   ofstream out(fname.c_str());
 
-  out << nx << " " << nhf << " " << nhb << " " << ny << endl;
+  out << nx << " " << nh << " " << nh << " " << ny << endl;
 
   out << Wf << endl;
   out << Vf << endl;
@@ -588,9 +586,9 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 
 string RNN::model_name() {
   ostringstream strS;
-  strS << "drnt_layers_" << layers << "_nhf_" << nhf << "_nhb_"
-  << nhb << "_dr_" << dropout_prob << "_lr_"
-  << lr << "_lambda_" << lambda << "_mr_" << mr << "_weight_" << null_class_weight ;
+  strS << "drnt_layers_" << layers << "_nh_" << nh
+  << "_dr_" << dropout_prob << "_lr_"<< lr << "_error_signal_" << error_signal
+  << "_lambda_" << lambda << "_mr_" << mr << "_weight_" << null_class_weight;
   string fname = strS.str();
   return fname;
 }

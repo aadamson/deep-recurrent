@@ -35,6 +35,7 @@ int main(int argc, char **argv) {
   string data  = "";
   string outdir = "models/";
   int num_epochs = 40;
+  bool error_signal = true;
 
   int c;
 
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
   cout << "Test set size: " << testX.size() << endl;
 
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  RNN brnn(nx, 25, 25, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
+  RNN brnn(nx, 25, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob, error_signal);
   string outpath = model_dir + "/" + brnn.model_name();
   auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, num_epochs, 80, outpath);
 

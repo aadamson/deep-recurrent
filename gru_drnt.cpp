@@ -19,7 +19,6 @@
 #include "data_utils/utils.cpp"
 #include "model.cpp"
 
-#define ERROR_SIGNAL
 #define NORMALIZE false // keeping this false throughout my own experiments
 #define layers 3 // number of EXTRA (not all) hidden layers
 
@@ -30,7 +29,7 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p);
 
 class GRURNN : public Model {
 public:
-  GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout = 0.0);
+  GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout = 0.0, bool error_signal = false);
 
   void save(string fname);
   void load(string fname);
@@ -149,17 +148,17 @@ private:
   uint nx, nh, ny;
   uint epoch;
 
-  float lambda, lr, mr, null_class_weight, dropout_prob;
+  float lambda, lr, mr, null_class_weight, dropout_prob, error_signal;
 };
 
-GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout) :
-  LT(&LT), nx(nx), nh(nh), ny(ny), lambda(lambda), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout)
+GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout, bool error_signal) :
+  LT(&LT), nx(nx), nh(nh), ny(ny), lambda(lambda), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout), error_signal(error_signal)
 {
   f = &_tanh;
   fp = &_tanhp;
 
-  f2 = &sigmoid;
-  f2p = &sigmoidp;
+  f2 = &relu;
+  f2p = &relup;
 
   // init randomly
   Wf = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
@@ -681,7 +680,7 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
     deltab[l].noalias() += WWrbb[l].transpose() * dJdArrb;
     deltab[l].noalias() += WWbb[l].transpose()  * dJdAhhtb;
 
-    #ifdef ERROR_SIGNAL
+    if (error_signal) {
       // Add supervised error signal (i.e. WW(f/b)o * delta_y)
       if (layers != 0) {
         deltaf[l].noalias() += WWfo[l].transpose() * delta_y; 
@@ -690,7 +689,7 @@ double GRURNN::backward(const vector<string> &sent, const vector<string> &labels
         deltaf[l].noalias() += Wfo.transpose() * delta_y; 
         deltab[l].noalias() += Wbo.transpose() * delta_y;
       }
-    #endif
+    } 
   }
 
   // Update gradients at input layer
@@ -1046,8 +1045,8 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 string GRURNN::model_name() {
   ostringstream strS;
   strS << "gru_drnt_layers_" << layers << "_nh_" << nh << "_dr_"
-  << dropout_prob << "_lr_"
-  << lr << "_lam_" << lambda << "_mr_" << mr << "_weight_" << null_class_weight;
+  << dropout_prob << "_lr_" << lr << "_error_sig_" << error_signal
+  << "_lam_" << lambda << "_mr_" << mr << "_weight_" << null_class_weight;
   string fname = strS.str();
   return fname;
 }

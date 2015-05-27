@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
   cout << "Validation set size: " << validX.size() << endl;
   cout << "Test set size: " << testX.size() << endl;
   
-  GRURNN brnn(nx, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob);
+  GRURNN brnn(nx, 20, ny, LT, lambda, lr, mr, null_class_weight, dropout_prob, true);
   string outpath = model_dir + "/" + brnn.model_name();
   auto results = brnn.train(trainX, trainL, validX, validL, testX, testL, num_epochs, 80, outpath);
   

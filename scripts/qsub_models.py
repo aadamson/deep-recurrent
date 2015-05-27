@@ -20,7 +20,9 @@ def stream_run_script(options):
                              lr=options['lr'],
                              dr=options['dr'],
                              outdir=options['outdir'],
-                             num_epochs=options['num_epochs'])
+                             num_epochs=options['num_epochs'],
+                             nh=options['nh'],
+                             sig=options['sig'])
     return script
 
 def render_job_script(options):
@@ -44,6 +46,8 @@ def main():
                         help='Number of tokens in embeddings file')
     parser.add_argument('-nx', dest='emb_dim', type=int,
                         help='Dimension of each word vector in embeddings file')
+    parser.add_argument('-nh', dest='nh', type=int,
+                        help='Dimension of hidden layer')
     parser.add_argument('--data', dest='data', type=str,
                         help='File containing data to be trained and tested on')
     parser.add_argument('--weight', dest='weight', type=float, nargs='+', default=[0.5],
@@ -54,14 +58,18 @@ def main():
                         help='Dropout probabilities to test on')
     parser.add_argument('--num_epochs', dest='num_epochs', type=int, default=40,
                         help='Number of epochs to train model for')
+    parser.add_argument('--sig', dest='error_signal', type=int, default=1,
+                        help='Add supervised error signal')
     parser.add_argument('--model', dest='model', type=str, default='GruDeepRecurrent',
                         help='Name of binary of model to run')
     args = parser.parse_args()
 
+    
+
     base_dict = { 'emb_file': args.emb_file, 'emb_dim': args.emb_dim, 
                   'num_tokens': args.num_tokens, 'data': args.data,
                   'model': args.model, 'outdir': args.outdir,
-                  'num_epochs': args.num_epochs }
+                  'num_epochs': args.num_epochs, 'nh': args.nh, 'sig': args.error_signal }
     options_dicts = []
 
     for weight in args.weight:
@@ -81,15 +89,20 @@ def main():
 
         model_short_name = options['model'][options['model'].find('/')+1:]
         data_short_name = options['data'][options['data'].rfind('/')+1:options['data'].rfind('.')]
-        model_name = "%s_lr_%g_dr_%g_weight_%g_lambda_%g_data_%s" % (model_short_name, options['lr'], options['dr'], options['weight'], options['lambda'], data_short_name)
+        model_name = "%s_nh_%d_nx_%d_lr_%g_error_sig_%d_dr_%g_weight_%g_lambda_%g_data_%s" % (model_short_name, options['nh'], options['emb_dim'], options['lr'], options['sig'],options['dr'], options['weight'], options['lambda'], data_short_name)
 
         script_name = "./temp_scripts/run_%d.sh" % random.randint(1, 1e6)
         script.dump(script_name)
         subprocess.call(["chmod", "u+x", script_name])
 
-        job_script = render_job_script({ 'outdir': args.outdir, 
+        full_outdir = args.outdir.rstrip('/') + "/" + data_short_name
+
+        if not os.path.isdir(full_outdir):
+          os.makedirs(full_outdir)
+        
+        job_script = render_job_script({ 'outdir': full_outdir, 
                                          'model_name': model_name, 
-                                         'script_path': script_name })
+                                         'script_path': script_name})
         print job_script
         subprocess.call(job_script, shell=True)
 
