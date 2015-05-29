@@ -157,8 +157,8 @@ GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float l
   f = &_tanh;
   fp = &_tanhp;
 
-  f2 = &relu;
-  f2p = &relup;
+  f2 = &sigmoid;
+  f2p = &sigmoidp;
 
   // init randomly
   Wf = MatrixXd(nh,nx).unaryExpr(ptr_fun(urand));
