@@ -1,3 +1,4 @@
+//my softmax reg
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -16,6 +17,8 @@
 #include "Eigen/Dense"
 #include "utils.cpp"
 #include "data_utils/utils.cpp"
+#include <getopt.h>
+#include "model.cpp"
 
 #define uint unsigned int
 
@@ -39,25 +42,30 @@ double DROP;
 Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p=DROP);
 #endif
 
-class SoftmaxRegression {
+class SoftmaxRegression : public Model {
 public:
   SoftmaxRegression(uint nx, uint ny, LookupTable &LT);
+  void save(string fname);
+  void load(string fname);
+  double cost(const vector<string> &sent, const vector<string> &labels);
+
   Matrix<double, 6, 2> train(vector<vector<string> > &sents,
                              vector<vector<string> > &labels,
                              vector<vector<string> > &validX,
                              vector<vector<string> > &validL,
                              vector<vector<string> > &testX,
                              vector<vector<string> > &testL);
+  bool is_nan();
   void update();
+  string model_name();
   Matrix<double, 3, 2> testSequential(vector<vector<string> > &sents,
                                       vector<vector<string> > &labels);
   LookupTable *LT;
-  void save(string fname);
-  void load(string fname);
+  
 
 private:
-  MatrixXd forward(const vector<string> &s, int index=-1);
-  double backward(const vector<string> &s, const vector<string> &labels);
+ MatrixXd forward(const vector<string> &sent);
+  double backward(const vector<string> &s, const vector<string> &labels);  
 
   // Parameters
   MatrixXd W;
@@ -77,13 +85,13 @@ private:
   double lr;
 };
 
-MatrixXd SoftmaxRegression::forward(const vector<string> &s, int index) {
+MatrixXd SoftmaxRegression::forward(const vector<string> &sent) {
   VectorXd dropper;
-  uint T = s.size();
+  uint T = sent.size();
 
   MatrixXd x = MatrixXd(nx, T);
   for (uint i=0; i<T; i++)
-    x.col(i) = (*LT)[s[i]];
+    x.col(i) = (*LT)[sent[i]];
 
   return softmax(b*RowVectorXd::Ones(T) + W*x);
 }
@@ -121,7 +129,6 @@ double SoftmaxRegression::backward(const vector<string> &sent, const vector<stri
   return (1.0 / T) * cost;
 }
 
-
 SoftmaxRegression::SoftmaxRegression(uint nx, uint ny, LookupTable &LT) {
   lr = ETA;
 
@@ -139,6 +146,15 @@ SoftmaxRegression::SoftmaxRegression(uint nx, uint ny, LookupTable &LT) {
 
   vW = MatrixXd::Zero(ny,nx);
   vb = VectorXd::Zero(ny);
+}
+
+
+double SoftmaxRegression:: cost(const vector<string> &sent, const vector<string> &labels){
+  return 0; // not relevant 
+}
+
+bool SoftmaxRegression::is_nan() {
+  return false; //not relevant
 }
 
 void SoftmaxRegression::update() {
@@ -173,13 +189,6 @@ void SoftmaxRegression::save(string fname) {
 
   out << W << endl;
   out << b << endl;
-}
-
-void printResults(Matrix<double, 3, 2> results) {
-  cout << "   " << " Prop " << "  Bin  " << endl;
-  cout << "Pr " << results(0, 0) << " " << results(0, 1) << endl;
-  cout << "Re " << results(1, 0) << " " << results(1, 1) << endl;
-  cout << "F1 " << results(2, 0) << " " << results(2, 1) << endl;
 }
 
 Matrix<double, 6, 2>
@@ -405,11 +414,124 @@ Matrix<double, -1, 1> dropout(Matrix<double, -1, 1> x, double p) {
 }
 #endif
 
+string SoftmaxRegression::model_name() {
+  ostringstream strS;
+  strS << "softmax_reg" << layers << lr << "_" << LAMBDA << "_" << MR ;
+  string fname = strS.str();
+  return fname;
+}
+
 int main(int argc, char **argv) {
   fold = atoi(argv[1]); // between 0-9
-  srand(135);
   cout << setprecision(6);
+  //===
+cout << setprecision(3);
 
+  // Set default arguments
+  int seed     = 135;
+  float lambda = 1e-6;
+  float lr     = 0.05;
+  float mr     = 0.7;
+  float null_class_weight = 0.5;
+  float dropout_prob = 0.0;
+  string embeddings_file = "embeddings-original.EMBEDDING_SIZE=25.txt";
+  int embeddings_tokens = 268810;
+  int nx = 25;
+  string data  = "";
+
+  int c;
+
+  while (1) {
+    static struct option long_options[] =
+      {
+
+        //CAN ALSO REWIRE LAMBDA, lr ETA, mr MR
+
+
+        {"seed",   required_argument, 0, 'a'},
+        // {"lr",     required_argument, 0, 'b'},
+        // {"mr",     required_argument, 0, 'c'},
+        // {"weight", required_argument, 0, 'd'},
+        {"data",   required_argument, 0, 'f'},
+        // {"dr",     required_argument, 0, 'g'},
+        // {"lambda", required_argument, 0, 'h'},
+        // {"emb",    required_argument, 0, 'i'},
+        // {"nt",     required_argument, 0, 'j'},
+        // {"nx",     required_argument, 0, 'k'},          
+      };
+    /* getopt_long stores the option index here. */
+    int option_index = 0;
+
+    c = getopt_long (argc, argv, "a:f",//"a:b:c:d:f:g:h:i:j:k:",
+                     long_options, &option_index);    
+
+    /* Detect the end of the options. */
+    if (c == -1)
+      break;
+
+    switch (c) {
+      case 0:
+        /* If this option set a flag, do nothing else now. */
+        if (long_options[option_index].flag != 0)
+          break;
+        printf ("option %s", long_options[option_index].name);
+        if (optarg)
+          printf (" with arg %s", optarg);
+        printf ("\n");
+        break;
+
+      case 'a':
+        seed = stoi(optarg);
+        break;
+
+      // case 'b':
+      //   lr = stof(optarg);
+      //   break;
+
+      // case 'c':
+      //   mr = stof(optarg);
+      //   break;
+
+      // case 'd':
+      //   null_class_weight = stof(optarg);
+      //   break;
+
+      case 'f':
+        data = string(optarg);
+        break;
+
+      // case 'g':
+      //   dropout_prob = stof(optarg);
+      //   break;
+
+      // case 'h':
+      //   lambda = stof(optarg);
+      //   break;
+
+      // case 'i':
+      //   embeddings_file = optarg;
+      //   break;
+
+      // case 'j':
+      //   embeddings_tokens = stoi(optarg);
+      //   break;
+
+      // case 'k':
+      //   nx = stoi(optarg);
+      //   break;
+
+      case '?':
+        /* getopt_long already printed an error message. */
+        break;
+
+      default:
+        abort ();
+    }
+  }
+
+
+  //----
+  srand(seed);
   LookupTable LT;
   // i used mikolov's word2vec (300d) for my experiments, not CW
   LT.load("embeddings-original.EMBEDDING_SIZE=25.txt", 268810, 25, false);
