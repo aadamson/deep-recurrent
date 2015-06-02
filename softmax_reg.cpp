@@ -455,14 +455,14 @@ cout << setprecision(3);
         {"data",   required_argument, 0, 'f'},
         // {"dr",     required_argument, 0, 'g'},
         // {"lambda", required_argument, 0, 'h'},
-        // {"emb",    required_argument, 0, 'i'},
-        // {"nt",     required_argument, 0, 'j'},
-        // {"nx",     required_argument, 0, 'k'},          
+        {"emb",    required_argument, 0, 'i'},
+        {"nt",     required_argument, 0, 'j'},
+        {"nx",     required_argument, 0, 'k'},          
       };
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:f",//"a:b:c:d:f:g:h:i:j:k:",
+    c = getopt_long (argc, argv, "a:f:i:j:k:",//"a:b:c:d:f:g:h:i:j:k:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -508,17 +508,17 @@ cout << setprecision(3);
       //   lambda = stof(optarg);
       //   break;
 
-      // case 'i':
-      //   embeddings_file = optarg;
-      //   break;
+      case 'i':
+        embeddings_file = optarg;
+        break;
 
-      // case 'j':
-      //   embeddings_tokens = stoi(optarg);
-      //   break;
+      case 'j':
+        embeddings_tokens = stoi(optarg);
+        break;
 
-      // case 'k':
-      //   nx = stoi(optarg);
-      //   break;
+      case 'k':
+        nx = stoi(optarg);
+        break;
 
       case '?':
         /* getopt_long already printed an error message. */
@@ -532,82 +532,27 @@ cout << setprecision(3);
 
   //----
   srand(seed);
+
   LookupTable LT;
-  // i used mikolov's word2vec (300d) for my experiments, not CW
-  LT.load("embeddings-original.EMBEDDING_SIZE=25.txt", 268810, 25, false);
+  LT.load(embeddings_file, embeddings_tokens, nx, false);
   vector<vector<string> > X;
   vector<vector<string> > T;
-  int ny = DataUtils::read_sentences(X, T, argv[2]); // dse.txt or ese.txt
-
-  unordered_map<string, set<uint> > sentenceIds;
-  set<string> allDocs;
-  ifstream in("sentenceid.txt");
-  string line;
-  uint numericId = 0;
-  while(getline(in, line)) {
-    vector<string> s = split(line, ' ');
-    assert(s.size() == 3);
-    string strId = s[2];
-
-    if (sentenceIds.find(strId) != sentenceIds.end()) {
-      sentenceIds[strId].insert(numericId);
-    } else {
-      sentenceIds[strId] = set<uint>();
-      sentenceIds[strId].insert(numericId);
-    }
-    numericId++;
-  }
+  int ny = DataUtils::read_sentences(X, T, data);
 
   vector<vector<string> > trainX, validX, testX;
   vector<vector<string> > trainL, validL, testL;
-  vector<bool> isUsed(X.size(), false);
 
-  ifstream in4("datasplit/doclist.mpqaOriginalSubset");
-  while(getline(in4, line))
-    allDocs.insert(line);
+  DataUtils::generate_splits(X, T, trainX, trainL, validX, validL, testX, testL, 0.8, 0.1, 0.1);
 
-  ifstream in2("datasplit/filelist_train"+to_string(fold));
-  while(getline(in2, line)) {
-    for (const auto &id : sentenceIds[line]) {
-      trainX.push_back(X[id]);
-      trainL.push_back(T[id]);
-    }
-    allDocs.erase(line);
-  }
-  ifstream in3("datasplit/filelist_test"+to_string(fold));
-  while(getline(in3, line)) {
-    for (const auto &id : sentenceIds[line]) {
-      testX.push_back(X[id]);
-      testL.push_back(T[id]);
-    }
-    allDocs.erase(line);
-  }
+  cout << "Total dataset size: " << X.size() << endl;
+  cout << "Training set size: " << trainX.size() << endl;
+  cout << "Validation set size: " << validX.size() << endl;
+  cout << "Test set size: " << testX.size() << endl;
 
-  uint validSize = 0;
-  for (const auto &doc : allDocs) {
-    for (const auto &id : sentenceIds[doc]) {
-      validX.push_back(X[id]);
-      validL.push_back(T[id]);
-    }
-  }
+  SoftmaxRegression srm(nt,ny,LT);
+  auto results = srm.train(trainX, trainL, validX, validL, testX, testL);
 
-  cout << X.size() << " " << trainX.size() << " " << testX.size() << endl;
-  cout << "Valid size: " << validX.size() << endl;
-
-  Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
-  double bestDrop;
-  for (DROP=0; DROP<0.1; DROP+=0.2) { // can use this loop for CV
-    SoftmaxRegression srm(25,ny,LT);
-    auto results = srm.train(trainX, trainL, validX, validL, testX, testL);
-    if (best(2,0) < results(2,0)) { // propF1 on val set
-      best = results;
-      bestDrop = DROP;
-    }
-    srm.save("model.txt");
-  }
-  cout << "Best: " << endl;
-  cout << "Drop: " << bestDrop << endl;
-  cout << best << endl;
+  srm.save("model.txt");
 
   return 0;
 }
