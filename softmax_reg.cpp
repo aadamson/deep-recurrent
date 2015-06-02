@@ -549,7 +549,7 @@ cout << setprecision(3);
   cout << "Validation set size: " << validX.size() << endl;
   cout << "Test set size: " << testX.size() << endl;
 
-  SoftmaxRegression srm(nt,ny,LT);
+  SoftmaxRegression srm(nx,ny,LT);
   auto results = srm.train(trainX, trainL, validX, validL, testX, testL);
 
   srm.save("model.txt");

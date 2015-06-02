@@ -154,8 +154,8 @@ private:
 GRURNN::GRURNN(uint nx, uint nh, uint ny, LookupTable &LT, float lambda, float lr, float mr, float null_class_weight, float dropout, bool error_signal) :
   LT(&LT), nx(nx), nh(nh), ny(ny), lambda(lambda), lr(lr), mr(mr), null_class_weight(null_class_weight), dropout_prob(dropout), error_signal(error_signal)
 {
-  f = &_tanh;
-  fp = &_tanhp;
+  f = &relu;
+  fp = &relup;
 
   f2 = &sigmoid;
   f2p = &sigmoidp;
