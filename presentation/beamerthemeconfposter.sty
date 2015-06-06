@@ -202,17 +202,22 @@
 \setbeamertemplate{headline}{
  \leavevmode
   \begin{columns}
-   \begin{column}{\linewidth}
+   \begin{column}{0.15\linewidth}
+   \end{column}
+   \begin{column}{0.7\linewidth}
     \vskip1cm
     \centering
-    \usebeamercolor{title in headline}{\color{DarkRed}\Huge{\textbf{\inserttitle}}\\[0.5ex]}
+    \usebeamercolor{title in headline}{\color{DarkRed}\huge{\textbf{\inserttitle}}\\[1ex]}
     \usebeamercolor{author in headline}{\color{fg}\Large{\insertauthor}\\[1ex]}
     \usebeamercolor{institute in headline}{\color{fg}\large{\insertinstitute}\\[1ex]}
     \vskip1cm
    \end{column}
+   \begin{column}{0.15\linewidth}
+    \includegraphics{SU_Seal_Red.png}
+   \end{column}
    \vspace{1cm}
   \end{columns}
- \vspace{0.5in}
+ \vspace{0.25in}
  \hspace{0.5in}\begin{beamercolorbox}[wd=47in,colsep=0.15cm]{cboxb}\end{beamercolorbox}
  \vspace{0.1in}
 }
