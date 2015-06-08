@@ -100,6 +100,27 @@ namespace DataUtils {
 
     return num_labels;
   }
+
+  void read_sentences_no_labels(vector<vector<string > > &X, string fname) {
+    ifstream in(fname.c_str());
+    string line;
+    vector<string> x;
+    while(std::getline(in, line)) {
+      if (isWhitespace(line)) {
+        if (x.size() != 0) {
+          X.push_back(x);
+          x.clear();
+        }
+      } else {
+        x.push_back(line);
+      }
+    }
+    if (x.size() != 0) {
+      X.push_back(x);
+      x.clear();
+    }
+
+  }
 }
 
 #endif
