@@ -13,6 +13,7 @@ add_executable(DeepRecurrentSentence drnt_forward.cpp)
 add_executable(GruDeepRecurrent gru_drnt_run.cpp)
 add_executable(GruDeepRecurrentSearch gru_drnt_gridsearch.cpp)
 add_executable(GruDeepRecurrentSentence gru_drnt_forward.cpp)
+add_executable(GruDeepRecurrentNorms gru_drnt_norms.cpp)
 
 add_executable(Baseline softmax_reg.cpp)
 
@@ -25,3 +26,4 @@ install (TARGETS DeepRecurrentSentence DESTINATION bin)
 install (TARGETS GruDeepRecurrent DESTINATION bin)
 install (TARGETS GruDeepRecurrentSearch DESTINATION bin)
 install (TARGETS GruDeepRecurrentSentence DESTINATION bin)
+install (TARGETS GruDeepRecurrentNorms DESTINATION bin)

@@ -43,7 +43,6 @@ int main(int argc, char **argv) {
   int nx = 25;
   int ny = 2;
   int nh = 25;
-  string sentence_path = "";
 
   int c;
 
@@ -51,7 +50,6 @@ int main(int argc, char **argv) {
     static struct option long_options[] =
       {
         {"model",  required_argument, 0, 'a'},
-        {"sent",   required_argument, 0, 'b'},
         {"emb",    required_argument, 0, 'i'},
         {"nt",     required_argument, 0, 'j'},
         {"nx",     required_argument, 0, 'k'},
@@ -61,7 +59,7 @@ int main(int argc, char **argv) {
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long (argc, argv, "a:b:i:j:k:l:m:",
+    c = getopt_long (argc, argv, "a:i:j:k:l:m:",
                      long_options, &option_index);    
 
     /* Detect the end of the options. */
@@ -81,10 +79,6 @@ int main(int argc, char **argv) {
 
       case 'a':
         model_path = optarg;
-        break;
-
-      case 'b':
-        sentence_path = optarg;
         break;
 
       case 'i':
@@ -119,19 +113,11 @@ int main(int argc, char **argv) {
   srand(seed);
 
   LookupTable LT;
-  LT.load(embeddings_file, embeddings_tokens, nx, false);
-
-  vector<vector<string> > X;
-  DataUtils::read_sentences_no_labels(X, sentence_path);
   
   GRURNN brnn(nx, nh, ny, LT, 0, 0, 0, 0, 0, false);
   brnn.load(model_path);
 
-  for(vector<vector<string> >::iterator sentence = X.begin(); sentence != X.end(); sentence++) {
-    MatrixXd prediction = brnn.forward(*sentence);
-    print_results(*sentence, prediction);
-    cout << endl;
-  }
+  brnn.print_norms();
  
   return 0;
 }

@@ -43,6 +43,7 @@ public:
   void grad_check(vector<string> &sentence, vector<string> &labels);
   double cost(const vector<string> &sent, const vector<string> &labels);
   void clear_gradients();
+  void print_norms();
 
   LookupTable *LT;
 
@@ -1370,5 +1371,55 @@ void GRURNN::clear_gradients() {
     gVVzb[l].setZero();
     gbbzhf[l].setZero();
     gbbzhb[l].setZero();
+  }
+}
+
+void GRURNN::print_norms() {
+  cout << "Wf "  << Wf.norm() << endl;
+  cout << "Vf "  << Vf.norm() << endl;
+  cout << "bhf " << bhf.norm() << endl;
+  cout << "Wb "  << Wb.norm() << endl;
+  cout << "Vb "  << Vb.norm() << endl;
+  cout << "bhb " << bhb.norm() << endl;
+  cout << "Wrf "  << Wrf.norm() << endl;
+  cout << "Vrf "  << Vrf.norm() << endl;
+  cout << "brhf " << brhf.norm() << endl;
+  cout << "Wrb "  << Wrb.norm() << endl;
+  cout << "Vrb "  << Vrb.norm() << endl;
+  cout << "brhb " << brhb.norm() << endl;
+  cout << "Wzf "  << Wzf.norm() << endl;
+  cout << "Vzf "  << Vzf.norm() << endl;
+  cout << "bzhf " << bzhf.norm() << endl;
+  cout << "Wzb "  << Wzb.norm() << endl;
+  cout << "Vzb "  << Vzb.norm() << endl;
+  cout << "bzhb " << bzhb.norm() << endl;
+
+  for (uint l=0; l<layers; l++) {
+    cout << "WWff[" << l << "] " << WWff[l].norm() << endl;
+    cout << "WWfb[" << l << "] " << WWfb[l].norm() << endl;
+    cout << "VVf[" << l << "] "  << VVf[l].norm() << endl;
+    cout << "bbhf[" << l << "] " << bbhf[l].norm() << endl;
+    cout << "WWbf[" << l << "] " << WWbf[l].norm() << endl;
+    cout << "WWbb[" << l << "] " << WWbb[l].norm() << endl;
+    cout << "VVb[" << l << "] "  << VVb[l].norm() << endl;
+    cout << "bbhb[" << l << "] " << bbhb[l].norm() << endl;
+
+    cout << "WWrff[" << l << "] " << WWrff[l].norm() << endl;
+    cout << "WWrfb[" << l << "] " << WWrfb[l].norm() << endl;
+    cout << "VVrf[" << l << "] "  << VVrf[l].norm() << endl;
+    cout << "bbrhf[" << l << "] " << bbrhf[l].norm() << endl;
+    cout << "WWrbf[" << l << "] " << WWrbf[l].norm() << endl;
+    cout << "WWrbb[" << l << "] " << WWrbb[l].norm() << endl;
+    cout << "VVrb[" << l << "] "  << VVrb[l].norm() << endl;
+    cout << "bbrhb[" << l << "] " << bbrhb[l].norm() << endl;
+
+    cout << "WWzff[" << l << "] " << WWzff[l].norm() << endl;
+    cout << "WWzfb[" << l << "] " << WWzfb[l].norm() << endl;
+    cout << "VVzf[" << l << "] "  << VVzf[l].norm() << endl;
+    cout << "bbzhf[" << l << "] " << bbzhf[l].norm() << endl;
+    cout << "WWzbf[" << l << "] " << WWzbf[l].norm() << endl;
+    cout << "WWzbb[" << l << "] " << WWzbb[l].norm() << endl;
+    cout << "VVzb[" << l << "] "  << VVzb[l].norm() << endl;
+    cout << "bbzhb[" << l << "] " << bbzhb[l].norm() << endl;
   }
 }
